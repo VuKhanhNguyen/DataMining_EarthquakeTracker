@@ -1,8 +1,12 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from Data_API import database
 import time
 import pandas as pd
 from datetime import datetime, timedelta
 from sqlalchemy import desc
-from database import SessionLocal, Earthquake, AnalysisStat
+from Data_API.database import SessionLocal, Earthquake, AnalysisStat
 
 SLEEP_TIME = 300 # 5 phút
 

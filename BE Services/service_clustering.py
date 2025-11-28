@@ -1,9 +1,13 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from Data_API import database
 import time
 import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
 from datetime import datetime
-from database import SessionLocal, Earthquake, ClusterInfo
+from Data_API.database import SessionLocal, Earthquake, ClusterInfo
 
 # Chạy 1 ngày 1 lần. Để test nhanh có thể sửa thành 60s
 SLEEP_TIME = 86400 
