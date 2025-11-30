@@ -172,7 +172,8 @@ def get_time_series(
         # Query dữ liệu trong khoảng thời gian
         query = db.query(Earthquake).filter(
             Earthquake.time >= start_date,
-            Earthquake.time <= end_date
+            Earthquake.time <= end_date,
+            Earthquake.time.isnot(None)
         ).order_by(Earthquake.time)
         
         earthquakes = query.all()
@@ -185,22 +186,27 @@ def get_time_series(
         
         for eq in earthquakes:
             if period == "day":
-                key = eq.time.strftime("%Y-%m-%d") if eq.time else "unknown"
+                key = eq.time.strftime("%Y-%m-%d")
+                # Thêm date object cho JavaScript
+                date_obj = eq.time.replace(hour=0, minute=0, second=0, microsecond=0)
             elif period == "week":
                 # Lấy tuần trong năm
-                if eq.time:
-                    year, week, _ = eq.time.isocalendar()
-                    key = f"{year}-W{week:02d}"
-                else:
-                    key = "unknown"
+                year, week, _ = eq.time.isocalendar()
+                key = f"{year}-W{week:02d}"
+                # Tính ngày đầu tuần cho JavaScript
+                date_obj = eq.time - timedelta(days=eq.time.weekday())
+                date_obj = date_obj.replace(hour=0, minute=0, second=0, microsecond=0)
             else:  # month
-                key = eq.time.strftime("%Y-%m") if eq.time else "unknown"
+                key = eq.time.strftime("%Y-%m")
+                # Ngày đầu tháng
+                date_obj = eq.time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             
             if key not in grouped_data:
                 grouped_data[key] = {
                     'count': 0,
                     'magnitudes': [],
-                    'depths': []
+                    'depths': [],
+                    'date_obj': date_obj
                 }
             
             grouped_data[key]['count'] += 1
@@ -219,16 +225,19 @@ def get_time_series(
             avg_depth = sum(data['depths']) / len(data['depths']) if data['depths'] else 0
             
             result.append({
-                'date': date_key,
+                'date': data['date_obj'].isoformat(),
+                'date_string': date_key,
                 'count': data['count'],
                 'avg_magnitude': round(avg_mag, 2),
                 'max_magnitude': round(max_mag, 2),
                 'avg_depth': round(avg_depth, 2)
             })
         
+        print(f"API time-series {period}: returning {len(result)} data points")  # Debug log
         return result
         
     except Exception as e:
+        print(f"Error in time-series API: {str(e)}")  # Debug log
         raise HTTPException(status_code=500, detail=f"Error generating time series: {str(e)}")
 
 # --- API Correlation Matrix ---
