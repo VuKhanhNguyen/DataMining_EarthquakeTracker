@@ -33,7 +33,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # URL API (Trỏ về Terminal 2 đang chạy)
-API_URL = "http://127.0.0.1:8000"
+API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
 
 # ==========================================
 # 2. HÀM GỌI API

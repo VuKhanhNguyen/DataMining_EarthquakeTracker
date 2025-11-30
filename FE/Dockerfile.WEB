@@ -1,0 +1,12 @@
+# FE/Dockerfile.html
+# Dùng image Nginx Alpine siêu nhẹ
+FROM nginx:alpine
+
+# Sao chép file index.html và nginx.conf vào vị trí mặc định của Nginx
+COPY ./FE/index.html /usr/share/nginx/html/index.html
+COPY ./FE/nginx.conf /etc/nginx/conf.d/default.conf
+
+RUN chown -R nginx:nginx /usr/share/nginx/html
+# Nginx mặc định chạy trên port 80
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

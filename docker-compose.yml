@@ -1,0 +1,84 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # 1. DATABASE SERVICE (PostgreSQL)
+  db:
+    image: postgres:14-alpine
+    container_name: earthquake_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: earthquakes_db
+    ports:
+      # Mở port 5432 để bạn có thể kết nối từ bên ngoài nếu cần (vd: DBeaver)
+      - "5432:5432"
+    volumes:
+      # Lưu data vào máy host để không mất khi dừng container
+      - db_data:/var/lib/postgresql/data
+    restart: always
+
+  # 2. DATA INGESTION SERVICE
+  ingestion:
+    build:
+      context: . # Build từ thư mục gốc
+      dockerfile: Ingestion/Dockerfile # Dùng Dockerfile trong thư mục Ingestion
+    container_name: data_ingestion
+    depends_on:
+      - db # Chờ DB chạy xong mới chạy Ingestion
+    environment:
+      # Truyền thông tin kết nối DB vào môi trường
+      # Các file database.py và data_ingestion.py của bạn cần dùng các biến này
+      DATABASE_URL: postgresql://user:password@db:5432/earthquakes_db
+    restart: always
+
+  # 3. API SERVER SERVICE (Backend)
+  api:
+    build:
+      context: .
+      dockerfile: Data_API/Dockerfile
+    container_name: earthquake_api
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/earthquakes_db
+    ports:
+      # Mở port 8000 để Frontend có thể gọi và bạn có thể truy cập trực tiếp
+      - "8000:8000"
+    restart: always
+
+  # 4. FRONTEND SERVICE (Streamlit Dashboard)
+  frontend:
+    build:
+      context: .
+      dockerfile: FE/Dockerfile
+    container_name: earthquake_frontend
+    depends_on:
+      - api # Chờ API chạy xong mới chạy Frontend
+    ports:
+      # Mở port 8501 để bạn truy cập Dashboard
+      - "8501:8501"
+    # LƯU Ý: API_URL trong frontend_app.py là http://127.0.0.1:8000.
+    # Khi chạy trong Docker Compose, nó phải là http://api:8000 (tên service là 'api').
+    # Bạn nên đổi API_URL trong frontend_app.py thành "http://api:8000" hoặc 
+    # sử dụng environment variable để config.
+    environment:
+      API_URL: http://api:8000
+    restart: always
+
+
+  # 5. STATIC WEB SERVICE (Phục vụ index.html)
+  static_web:
+    build:
+      context: .
+      # Dùng Dockerfile mới tạo
+      dockerfile: FE/Dockerfile.WEB 
+    container_name: earthquake_static_web
+    ports:
+      # Mở cổng 8080 để truy cập index.html
+      - "5500:80" 
+    restart: always
+
+# Khai báo volume để lưu dữ liệu DB
+volumes:
+  db_data:

@@ -2,16 +2,28 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
-
+import os 
+from sqlalchemy import create_engine
 # ==========================================
 # CẤU HÌNH KẾT NỐI DATABASE
 # ==========================================
 
-DATABASE_URL = "mysql+pymysql://root:Nvk_09112004@localhost/earthquake_db"
+DATABASE_URL = "mysql+pymysql://root:123456@localhost/earthquake_db"
 
 engine = create_engine(DATABASE_URL, echo=False) # echo=True để xem log SQL
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DATABASE_URL:
+    # Trường hợp dự phòng nếu chạy cục bộ mà không có biến môi trường
+    # Nếu đang chạy Docker Compose, dòng này sẽ không được gọi
+    raise ValueError("DATABASE_URL environment variable not set. Please set it or run via Docker Compose.")
+
+# Tạo SQLAlchemy Engine sử dụng DATABASE_URL
+engine = create_engine(DATABASE_URL)
 
 # ==========================================
 # ĐỊNH NGHĨA CÁC BẢNG (MODELS)
