@@ -13,6 +13,28 @@ from Data_API.database import SessionLocal, Earthquake, ClusterInfo
 SLEEP_TIME = 86400 
 N_CLUSTERS = 5 # Số lượng cụm muốn chia (ví dụ: chia thế giới thành 5 vùng hoạt động)
 
+def get_zone_name(lat, lon):
+    """
+    Xác định tên zone dựa trên tọa độ trung tâm cụm
+    """
+    # Định nghĩa các vùng địa lý chính
+    if lat >= 35 and lon >= -125 and lon <= -60:  # Bắc Mỹ
+        return "North America"
+    elif lat >= -60 and lat <= 15 and lon >= -90 and lon <= -30:  # Nam Mỹ
+        return "South America"
+    elif lat >= 35 and lon >= -10 and lon <= 75:  # Châu Âu - Tây Á
+        return "Europe-West Asia"
+    elif lat >= -40 and lat <= 55 and lon >= 25 and lon <= 145:  # Châu Á - Châu Phi
+        return "Asia-Africa"
+    elif lat >= -50 and lat <= 10 and lon >= 95 and lon <= 180:  # Châu Đại Dương
+        return "Pacific-Oceania"
+    elif lat >= 30 and lon >= 120 and lon <= 150:  # Nhật Bản - Hàn Quốc
+        return "Japan-Korea Region"
+    elif lat >= -10 and lat <= 30 and lon >= 90 and lon <= 140:  # Đông Nam Á
+        return "Southeast Asia"
+    else:
+        return f"Zone ({lat:.1f}, {lon:.1f})"
+
 def run_clustering():
     session = SessionLocal()
     try:
@@ -55,9 +77,10 @@ def run_clustering():
             count_in_cluster = len(df[df['cluster_label'] == i])
             risk = "High" if count_in_cluster > len(df)/N_CLUSTERS else "Medium"
             
+            zone_name = get_zone_name(center[0], center[1])
             c_info = ClusterInfo(
                 cluster_id=i,
-                cluster_name=f"Zone {i+1}",
+                cluster_name=zone_name,
                 centroid_lat=float(center[0]),
                 centroid_lon=float(center[1]),
                 risk_level=risk,

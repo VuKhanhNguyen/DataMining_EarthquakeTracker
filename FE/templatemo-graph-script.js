@@ -1,264 +1,1047 @@
 /* JavaScript Document
 
-TemplateMo 602 Graph Page
+TemplateMo 602 Graph Page - Earthquake Tracker Dashboard
 
 https://templatemo.com/tm-602-graph-page
 
 */
 
-// Hamburger menu toggle
-const hamburger = document.getElementById('hamburger');
-const navLinksMobile = document.getElementById('navLinksMobile');
-const mobileLinks = navLinksMobile.querySelectorAll('a');
+// API Configuration
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
-hamburger.addEventListener('click', function () {
-   hamburger.classList.toggle('active');
-   navLinksMobile.classList.toggle('active');
+// Global variables for charts
+let lineChart, scatterChart, histogramChart, trendChart, seasonalChart;
+let currentPeriod = 'day';
+let currentResample = 'week';
+
+// Data storage
+let earthquakeData = {
+    daily: [],
+    weekly: [],
+    monthly: []
+};
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeNavigation();
+    loadInitialData();
+    setupEventListeners();
 });
 
-// Close mobile menu when a link is clicked
-mobileLinks.forEach(link => {
-   link.addEventListener('click', function () {
-      hamburger.classList.remove('active');
-      navLinksMobile.classList.remove('active');
-   });
-});
-
-// Close mobile menu when scrolling
-window.addEventListener('scroll', function () {
-   hamburger.classList.remove('active');
-   navLinksMobile.classList.remove('active');
-});
-
-// Navbar scroll effect
-window.addEventListener('scroll', function () {
-   const navbar = document.getElementById('navbar');
-   if (window.scrollY > 50) {
-      navbar.classList.add('scrolled');
-   } else {
-      navbar.classList.remove('scrolled');
-   }
-});
-
-// Active navigation highlighting
-const sections = document.querySelectorAll('section[id]');
-const navLinks = document.querySelectorAll('.nav-links a');
-const mobileNavLinks = document.querySelectorAll('.nav-links-mobile a');
-
-function updateActiveNav() {
-   const scrollY = window.pageYOffset;
-
-   sections.forEach(section => {
-      const sectionHeight = section.offsetHeight;
-      const sectionTop = section.offsetTop - 100;
-      const sectionId = section.getAttribute('id');
-
-      if (scrollY > sectionTop && scrollY <= sectionTop + sectionHeight) {
-         navLinks.forEach(link => {
-            link.classList.remove('active');
-            if (link.getAttribute('href') === `#${sectionId}`) {
-               link.classList.add('active');
-            }
-         });
-
-         mobileNavLinks.forEach(link => {
-            link.classList.remove('active');
-            if (link.getAttribute('href') === `#${sectionId}`) {
-               link.classList.add('active');
-            }
-         });
-      }
-   });
+// Load initial data from API
+async function loadInitialData() {
+    try {
+        // Load stats
+        await loadStats();
+        
+        // Load time series data for different periods
+        await loadTimeSeriesData();
+        
+        // Initialize charts after data is loaded
+        initializeCharts();
+        
+        // Load correlation matrix
+        await loadCorrelationMatrix();
+        
+        // Load predictions
+        await loadPredictions();
+        
+    } catch (error) {
+        console.error('Error loading initial data:', error);
+        // Fallback to sample data if API fails
+        loadFallbackData();
+    }
 }
 
-window.addEventListener('scroll', updateActiveNav);
+// Load statistics from API
+async function loadStats() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/stats`);
+        if (!response.ok) throw new Error('Failed to fetch stats');
+        
+        const stats = await response.json();
+        
+        // Animate counters with real data
+        animateValue('totalEarthquakes', 0, stats.total_earthquakes, 2000);
+        animateValue('avgMagnitude', 0, stats.avg_magnitude, 2000, 1);
+        animateValue('avgDepth', 0, stats.avg_depth, 2000, 1, ' km');
+        animateValue('riskZones', 0, stats.risk_zones, 2000);
+        
+    } catch (error) {
+        console.error('Error loading stats:', error);
+        // Fallback stats
+        animateValue('totalEarthquakes', 0, 1234, 2000);
+        animateValue('avgMagnitude', 0, 4.2, 2000, 1);
+        animateValue('avgDepth', 0, 45.8, 2000, 1, ' km');
+        animateValue('riskZones', 0, 5, 2000);
+    }
+}
 
-// Smooth scrolling
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-   anchor.addEventListener('click', function (e) {
-      e.preventDefault();
-      const target = document.querySelector(this.getAttribute('href'));
-      if (target) {
-         target.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-         });
-      }
-   });
-});
+// Load time series data
+async function loadTimeSeriesData() {
+    try {
+        // Load data for different periods
+        const periods = ['day', 'week', 'month'];
+        const daysBacks = { day: 30, week: 84, month: 365 };
+        
+        for (const period of periods) {
+            const response = await fetch(
+                `${API_BASE_URL}/api/time-series?period=${period}&days_back=${daysBacks[period]}`
+            );
+            
+            if (response.ok) {
+                const data = await response.json();
+                earthquakeData[`${period}ly`] = data.map(item => ({
+                    date: new Date(item.date),
+                    count: item.count,
+                    magnitude: item.avg_magnitude,
+                    max_magnitude: item.max_magnitude,
+                    depth: item.avg_depth,
+                    latitude: 0, // Will be filled from earthquake details if needed
+                    longitude: 0
+                }));
+            }
+        }
+        
+        // If no data received, generate fallback
+        if (earthquakeData.daily.length === 0) {
+            generateFallbackTimeSeriesData();
+        }
+        
+    } catch (error) {
+        console.error('Error loading time series data:', error);
+        generateFallbackTimeSeriesData();
+    }
+}
 
-// Mini charts animation
+// Generate fallback data if API fails
+function generateFallbackTimeSeriesData() {
+    earthquakeData = {
+        daily: generateSampleData(30, 'day'),
+        weekly: generateSampleData(12, 'week'), 
+        monthly: generateSampleData(6, 'month')
+    };
+}
+
+// Load correlation matrix
+async function loadCorrelationMatrix() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/correlation`);
+        if (!response.ok) throw new Error('Failed to fetch correlation');
+        
+        const correlationData = await response.json();
+        renderCorrelationMatrix(correlationData);
+        
+    } catch (error) {
+        console.error('Error loading correlation matrix:', error);
+        // Fallback correlation matrix
+        const fallbackData = {
+            variables: ['Cường độ', 'Độ sâu', 'Vĩ độ', 'Kinh độ'],
+            matrix: [
+                [1.00, -0.15, 0.05, -0.03],
+                [-0.15, 1.00, 0.08, 0.02],
+                [0.05, 0.08, 1.00, 0.12],
+                [-0.03, 0.02, 0.12, 1.00]
+            ]
+        };
+        renderCorrelationMatrix(fallbackData);
+    }
+}
+
+// Load predictions
+async function loadPredictions() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/predictions`);
+        if (!response.ok) throw new Error('Failed to fetch predictions');
+        
+        const data = await response.json();
+        updatePredictionsDisplay(data);
+        
+    } catch (error) {
+        console.error('Error loading predictions:', error);
+        // Fallback predictions
+        updatePredictionsDisplay({
+            predictions: [
+                { type: 'magnitude', value: 4.2, confidence: 85 },
+                { type: 'depth', value: 45.8, confidence: 78 }
+            ]
+        });
+    }
+}
+
+// Navigation functionality
+function initializeNavigation() {
+    const hamburger = document.getElementById('hamburger');
+    const navLinksMobile = document.getElementById('navLinksMobile');
+    const mobileLinks = navLinksMobile.querySelectorAll('a');
+
+    hamburger.addEventListener('click', function () {
+        hamburger.classList.toggle('active');
+        navLinksMobile.classList.toggle('active');
+    });
+
+    // Close mobile menu when a link is clicked
+    mobileLinks.forEach(link => {
+        link.addEventListener('click', function () {
+            hamburger.classList.remove('active');
+            navLinksMobile.classList.remove('active');
+        });
+    });
+
+    // Close mobile menu when scrolling
+    window.addEventListener('scroll', function () {
+        hamburger.classList.remove('active');
+        navLinksMobile.classList.remove('active');
+    });
+
+    // Navbar scroll effect
+    window.addEventListener('scroll', function () {
+        const navbar = document.getElementById('navbar');
+        if (window.scrollY > 50) {
+            navbar.classList.add('scrolled');
+        } else {
+            navbar.classList.remove('scrolled');
+        }
+    });
+
+    // Active navigation highlighting
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.nav-links a');
+    const mobileNavLinks = document.querySelectorAll('.nav-links-mobile a');
+
+    function updateActiveNav() {
+        const scrollY = window.pageYOffset;
+
+        sections.forEach(section => {
+            const sectionHeight = section.offsetHeight;
+            const sectionTop = section.offsetTop - 100;
+            const sectionId = section.getAttribute('id');
+
+            if (scrollY > sectionTop && scrollY <= sectionTop + sectionHeight) {
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href') === `#${sectionId}`) {
+                        link.classList.add('active');
+                    }
+                });
+
+                mobileNavLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href') === `#${sectionId}`) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+        });
+    }
+
+    window.addEventListener('scroll', updateActiveNav);
+
+    // Smooth scrolling
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        });
+    });
+}
+
+// Generate sample earthquake data (fallback)
+function generateSampleData(count, period) {
+    const data = [];
+    const now = new Date();
+    
+    for (let i = count - 1; i >= 0; i--) {
+        const date = new Date(now);
+        
+        if (period === 'day') {
+            date.setDate(date.getDate() - i);
+        } else if (period === 'week') {
+            date.setDate(date.getDate() - (i * 7));
+        } else if (period === 'month') {
+            date.setMonth(date.getMonth() - i);
+        }
+        
+        // Generate realistic earthquake data
+        const magnitude = 2 + Math.random() * 6; // 2-8 magnitude
+        const depth = 5 + Math.random() * 200; // 5-205 km depth
+        const count = Math.floor(Math.random() * 50) + 1; // 1-50 earthquakes per period
+        
+        data.push({
+            date: date,
+            magnitude: magnitude,
+            depth: depth,
+            count: count,
+            latitude: (Math.random() - 0.5) * 180,
+            longitude: (Math.random() - 0.5) * 360
+        });
+    }
+    
+    return data;
+}
+
+// Initialize all charts
+function initializeCharts() {
+    // Wait a bit to ensure DOM elements are ready
+    setTimeout(() => {
+        initializeLineChart();
+        initializeScatterChart();
+        initializeHistogramChart();
+        initializeTrendChart();
+        initializeSeasonalChart();
+    }, 100);
+}
+
+// Line Chart - Time series of earthquake frequency
+function initializeLineChart() {
+    const canvas = document.getElementById('lineChart');
+    if (!canvas) {
+        console.error('lineChart canvas not found');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    const data = earthquakeData[`${currentPeriod}ly`] || [];
+    
+    if (lineChart) {
+        lineChart.destroy();
+    }
+    
+    lineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.date.toLocaleDateString()),
+            datasets: [{
+                label: 'Số lượng động đất',
+                data: data.map(d => d.count),
+                borderColor: '#ff4444',
+                backgroundColor: 'rgba(255, 68, 68, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#ff4444',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Scatter Chart - Magnitude vs Depth
+function initializeScatterChart() {
+    const canvas = document.getElementById('scatterChart');
+    if (!canvas) {
+        console.error('scatterChart canvas not found');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    const data = earthquakeData[`${currentPeriod}ly`] || [];
+    
+    if (scatterChart) {
+        scatterChart.destroy();
+    }
+    
+    scatterChart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Động đất',
+                data: data.map(d => ({
+                    x: d.magnitude,
+                    y: d.depth
+                })),
+                backgroundColor: 'rgba(255, 68, 68, 0.6)',
+                borderColor: '#ff4444',
+                borderWidth: 2,
+                pointRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Độ sâu (km)',
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Cường độ (Richter)',
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Histogram Chart - Magnitude distribution
+function initializeHistogramChart() {
+    const canvas = document.getElementById('histogramChart');
+    if (!canvas) {
+        console.error('histogramChart canvas not found');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    const data = earthquakeData[`${currentPeriod}ly`] || [];
+    
+    // Create magnitude bins
+    const bins = [0, 2, 3, 4, 5, 6, 7, 8];
+    const binCounts = new Array(bins.length - 1).fill(0);
+    
+    data.forEach(d => {
+        for (let i = 0; i < bins.length - 1; i++) {
+            if (d.magnitude >= bins[i] && d.magnitude < bins[i + 1]) {
+                binCounts[i]++;
+                break;
+            }
+        }
+    });
+    
+    if (histogramChart) {
+        histogramChart.destroy();
+    }
+    
+    histogramChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: bins.slice(0, -1).map((bin, i) => `${bin}-${bins[i + 1]}`),
+            datasets: [{
+                label: 'Số lượng động đất',
+                data: binCounts,
+                backgroundColor: 'rgba(255, 68, 68, 0.7)',
+                borderColor: '#ff4444',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Tần suất',
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Cường độ (Richter)',
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Trend Chart - Resampled data
+function initializeTrendChart() {
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) {
+        console.error('trendChart canvas not found');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'] || [];
+    
+    // Calculate moving average for trend
+    const movingAvg = calculateMovingAverage(data.map(d => d.magnitude), 3);
+    
+    if (trendChart) {
+        trendChart.destroy();
+    }
+    
+    trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.date.toLocaleDateString()),
+            datasets: [
+                {
+                    label: 'Cường độ trung bình',
+                    data: data.map(d => d.magnitude),
+                    borderColor: '#ff8800',
+                    backgroundColor: 'rgba(255, 136, 0, 0.1)',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.4
+                },
+                {
+                    label: 'Xu hướng (MA)',
+                    data: movingAvg,
+                    borderColor: '#ff4444',
+                    backgroundColor: 'transparent',
+                    borderWidth: 3,
+                    fill: false,
+                    tension: 0.4,
+                    borderDash: [5, 5]
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: '#ffffff'
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Cường độ trung bình',
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Seasonal Chart - Monthly patterns
+function initializeSeasonalChart() {
+    const canvas = document.getElementById('seasonalChart');
+    if (!canvas) {
+        console.error('seasonalChart canvas not found');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Use monthly data if available, otherwise generate seasonal pattern
+    let seasonalData;
+    if (earthquakeData.monthly && earthquakeData.monthly.length > 0) {
+        // Group by month and calculate averages
+        const monthlyAverages = new Array(12).fill(0);
+        const monthlyCounts = new Array(12).fill(0);
+        
+        earthquakeData.monthly.forEach(item => {
+            const month = item.date.getMonth();
+            monthlyAverages[month] += item.count;
+            monthlyCounts[month]++;
+        });
+        
+        seasonalData = monthlyAverages.map((sum, index) => 
+            monthlyCounts[index] > 0 ? sum / monthlyCounts[index] : 0
+        );
+    } else {
+        // Generate seasonal pattern (fallback)
+        const months = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
+        seasonalData = months.map((month, index) => {
+            const baseLine = 15;
+            const seasonal = Math.sin((index / 12) * 2 * Math.PI) * 5;
+            const noise = (Math.random() - 0.5) * 3;
+            return Math.max(0, baseLine + seasonal + noise);
+        });
+    }
+    
+    const months = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
+    
+    if (seasonalChart) {
+        seasonalChart.destroy();
+    }
+    
+    seasonalChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Hoạt động động đất theo tháng',
+                data: seasonalData,
+                borderColor: '#00ff88',
+                backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#00ff88',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Số lượng động đất',
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Tháng',
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Calculate moving average
+function calculateMovingAverage(data, windowSize) {
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < windowSize - 1) {
+            result.push(null);
+        } else {
+            const window = data.slice(i - windowSize + 1, i + 1);
+            const average = window.reduce((sum, val) => sum + val, 0) / windowSize;
+            result.push(average);
+        }
+    }
+    return result;
+}
+
+// Render correlation matrix
+function renderCorrelationMatrix(correlationData) {
+    const correlationMatrix = document.getElementById('correlationMatrix');
+    
+    if (!correlationMatrix) {
+        console.error('correlationMatrix element not found');
+        return;
+    }
+    
+    const variables = correlationData.variables;
+    const correlations = correlationData.matrix;
+    
+    correlationMatrix.style.gridTemplateColumns = `repeat(${variables.length + 1}, 1fr)`;
+    
+    // Clear existing content
+    correlationMatrix.innerHTML = '';
+    
+    // Add headers
+    correlationMatrix.innerHTML = '<div class="correlation-cell header"></div>';
+    variables.forEach(variable => {
+        correlationMatrix.innerHTML += `<div class="correlation-cell header">${variable}</div>`;
+    });
+    
+    // Add correlation values
+    variables.forEach((rowVar, i) => {
+        correlationMatrix.innerHTML += `<div class="correlation-cell header">${rowVar}</div>`;
+        correlations[i].forEach(correlation => {
+            const cell = document.createElement('div');
+            cell.className = 'correlation-cell';
+            cell.innerHTML = `<div class="correlation-value">${correlation.toFixed(2)}</div>`;
+            
+            // Color based on correlation strength
+            const absCorr = Math.abs(correlation);
+            if (correlation > 0) {
+                cell.style.background = `rgba(0, 255, 136, ${absCorr * 0.8})`;
+            } else {
+                cell.style.background = `rgba(255, 68, 68, ${absCorr * 0.8})`;
+            }
+            
+            correlationMatrix.appendChild(cell);
+        });
+    });
+}
+
+// Update predictions display
+function updatePredictionsDisplay(data) {
+    if (!data.predictions || data.predictions.length === 0) return;
+    
+    // Find magnitude prediction
+    const magPrediction = data.predictions.find(p => p.type === 'magnitude');
+    if (magPrediction) {
+        const magnitudeElement = document.getElementById('predictedMagnitude');
+        if (magnitudeElement) {
+            magnitudeElement.textContent = magPrediction.value.toFixed(1);
+        }
+        
+        // Update risk level based on magnitude
+        updateRiskLevel(magPrediction.value);
+    }
+    
+    // Find depth prediction
+    const depthPrediction = data.predictions.find(p => p.type === 'depth');
+    if (depthPrediction) {
+        const depthElement = document.getElementById('predictedDepth');
+        if (depthElement) {
+            depthElement.textContent = depthPrediction.value.toFixed(1);
+        }
+    }
+}
+
+// Update risk level display
+function updateRiskLevel(predictedMagnitude) {
+    const riskLevel = document.getElementById('riskLevel');
+    if (riskLevel) {
+        const riskText = riskLevel.querySelector('.risk-text');
+        
+        if (predictedMagnitude > 6) {
+            riskLevel.className = 'risk-level high';
+            if (riskText) riskText.textContent = 'RỦI RO CAO';
+        } else if (predictedMagnitude > 4) {
+            riskLevel.className = 'risk-level medium';
+            if (riskText) riskText.textContent = 'RỦI RO TRUNG BÌNH';
+        } else {
+            riskLevel.className = 'risk-level low';
+            if (riskText) riskText.textContent = 'RỦI RO THẤP';
+        }
+    }
+}
+
+// Animate counter values
+function animateValue(id, start, end, duration, decimals = 0, suffix = '') {
+    const element = document.getElementById(id);
+    if (!element) return;
+    
+    const range = end - start;
+    const increment = range / (duration / 16);
+    let current = start;
+    
+    const timer = setInterval(() => {
+        current += increment;
+        if (current >= end) {
+            current = end;
+            clearInterval(timer);
+        }
+        element.textContent = current.toFixed(decimals) + suffix;
+    }, 16);
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    // Time period selector
+    const timeBtns = document.querySelectorAll('.time-btn');
+    timeBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            timeBtns.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            currentPeriod = this.dataset.period;
+            updateTimeSeriesCharts();
+        });
+    });
+    
+    // Chart options for trend analysis
+    const chartOptions = document.querySelectorAll('.chart-options .chart-option');
+    chartOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            const parent = this.parentElement;
+            parent.querySelectorAll('.chart-option').forEach(opt => opt.classList.remove('active'));
+            this.classList.add('active');
+            currentResample = this.dataset.resample;
+            updateTrendChart();
+        });
+    });
+}
+
+// Update time series charts when period changes
+function updateTimeSeriesCharts() {
+    // Update Line Chart
+    const lineData = earthquakeData[`${currentPeriod}ly`];
+    if (lineChart && lineData) {
+        lineChart.data.labels = lineData.map(d => d.date.toLocaleDateString());
+        lineChart.data.datasets[0].data = lineData.map(d => d.count);
+        lineChart.update();
+    }
+    
+    // Update Scatter Chart
+    if (scatterChart && lineData) {
+        scatterChart.data.datasets[0].data = lineData.map(d => ({
+            x: d.magnitude,
+            y: d.depth
+        }));
+        scatterChart.update();
+    }
+    
+    // Update Histogram
+    if (histogramChart && lineData) {
+        const bins = [0, 2, 3, 4, 5, 6, 7, 8];
+        const binCounts = new Array(bins.length - 1).fill(0);
+        
+        lineData.forEach(d => {
+            for (let i = 0; i < bins.length - 1; i++) {
+                if (d.magnitude >= bins[i] && d.magnitude < bins[i + 1]) {
+                    binCounts[i]++;
+                    break;
+                }
+            }
+        });
+        
+        histogramChart.data.datasets[0].data = binCounts;
+        histogramChart.update();
+    }
+}
+
+// Update trend chart when resample period changes
+function updateTrendChart() {
+    const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'];
+    
+    if (trendChart && data) {
+        const movingAvg = calculateMovingAverage(data.map(d => d.magnitude), 3);
+        
+        trendChart.data.labels = data.map(d => d.date.toLocaleDateString());
+        trendChart.data.datasets[0].data = data.map(d => d.magnitude);
+        trendChart.data.datasets[1].data = movingAvg;
+        trendChart.update();
+    }
+}
+
+// Load fallback data if API is not available
+function loadFallbackData() {
+    console.log('Loading fallback data...');
+    generateFallbackTimeSeriesData();
+    initializeCharts();
+    
+    // Fallback correlation matrix
+    const fallbackCorrelation = {
+        variables: ['Cường độ', 'Độ sâu', 'Vĩ độ', 'Kinh độ'],
+        matrix: [
+            [1.00, -0.23, 0.15, -0.08],
+            [-0.23, 1.00, 0.12, 0.09],
+            [0.15, 0.12, 1.00, 0.03],
+            [-0.08, 0.09, 0.03, 1.00]
+        ]
+    };
+    renderCorrelationMatrix(fallbackCorrelation);
+    
+    // Fallback predictions
+    updatePredictionsDisplay({
+        predictions: [
+            { type: 'magnitude', value: 4.2, confidence: 85 },
+            { type: 'depth', value: 45.8, confidence: 78 }
+        ]
+    });
+}
+
+// Mini charts animation (keeping original functionality)
 function drawMiniChart(canvasId, color) {
-   const canvas = document.getElementById(canvasId);
-   if (!canvas) return;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
 
-   const ctx = canvas.getContext('2d');
-   canvas.width = canvas.offsetWidth;
-   canvas.height = canvas.offsetHeight;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
 
-   // Generate random data points
-   const points = [];
-   for (let i = 0; i < 10; i++) {
-      points.push(Math.random() * canvas.height);
-   }
+    // Generate random data points
+    const points = [];
+    for (let i = 0; i < 10; i++) {
+        points.push(Math.random() * canvas.height);
+    }
 
-   // Draw line
-   ctx.beginPath();
-   ctx.strokeStyle = color;
-   ctx.lineWidth = 2;
+    // Draw line
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
 
-   points.forEach((point, index) => {
-      const x = (canvas.width / (points.length - 1)) * index;
-      const y = point;
+    points.forEach((point, index) => {
+        const x = (canvas.width / (points.length - 1)) * index;
+        const y = point;
 
-      if (index === 0) {
-         ctx.moveTo(x, y);
-      } else {
-         ctx.lineTo(x, y);
-      }
-   });
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
 
-   ctx.stroke();
+    ctx.stroke();
 
-   // Draw gradient fill
-   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-   gradient.addColorStop(0, color + '40');
-   gradient.addColorStop(1, color + '00');
+    // Draw gradient fill
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, color + '40');
+    gradient.addColorStop(1, color + '00');
 
-   ctx.lineTo(canvas.width, canvas.height);
-   ctx.lineTo(0, canvas.height);
-   ctx.closePath();
-   ctx.fillStyle = gradient;
-   ctx.fill();
+    ctx.lineTo(canvas.width, canvas.height);
+    ctx.lineTo(0, canvas.height);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
 }
 
 // Initialize mini charts
 setTimeout(() => {
-   drawMiniChart('miniChart1', '#00ffcc');
-   drawMiniChart('miniChart2', '#ff0080');
-   drawMiniChart('miniChart3', '#00ccff');
-   drawMiniChart('miniChart4', '#ffcc00');
-   drawMiniChart('miniChart5', '#ff6b6b');
-   drawMiniChart('miniChart6', '#4ecdc4');
+    drawMiniChart('miniChart1', '#00ffcc');
+    drawMiniChart('miniChart2', '#ff0080');
+    drawMiniChart('miniChart3', '#00ccff');
+    drawMiniChart('miniChart4', '#ffcc00');
+    drawMiniChart('miniChart5', '#ff6b6b');
+    drawMiniChart('miniChart6', '#4ecdc4');
 }, 100);
 
 // Animate stats on scroll
 const observerOptions = {
-   threshold: 0.5,
-   rootMargin: '0px'
+    threshold: 0.5,
+    rootMargin: '0px'
 };
 
 const observer = new IntersectionObserver((entries) => {
-   entries.forEach(entry => {
-      if (entry.isIntersecting) {
-         const bars = entry.target.querySelectorAll('.bar');
-         bars.forEach((bar, index) => {
-            setTimeout(() => {
-               bar.style.animation = 'slideUp 0.5s ease-out forwards';
-            }, index * 100);
-         });
-      }
-   });
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const bars = entry.target.querySelectorAll('.bar');
+            bars.forEach((bar, index) => {
+                setTimeout(() => {
+                    bar.style.animation = 'slideUp 0.5s ease-out forwards';
+                }, index * 100);
+            });
+        }
+    });
 }, observerOptions);
 
 document.querySelectorAll('.bar-chart').forEach(chart => {
-   observer.observe(chart);
+    observer.observe(chart);
 });
 
 // Add slide up animation
 const style = document.createElement('style');
 style.textContent = `
-            @keyframes slideUp {
-                from {
-                    transform: scaleY(0);
-                    transform-origin: bottom;
-                }
-                to {
-                    transform: scaleY(1);
-                    transform-origin: bottom;
-                }
-            }
-        `;
+    @keyframes slideUp {
+        from {
+            transform: scaleY(0);
+            transform-origin: bottom;
+        }
+        to {
+            transform: scaleY(1);
+            transform-origin: bottom;
+        }
+    }
+`;
 document.head.appendChild(style);
-
-// Chart options interaction
-document.querySelectorAll('.chart-options').forEach(optionGroup => {
-   const options = optionGroup.querySelectorAll('.chart-option');
-   options.forEach(option => {
-      option.addEventListener('click', function () {
-         options.forEach(opt => opt.classList.remove('active'));
-         this.classList.add('active');
-      });
-   });
-});
-
-// Form submission handler
-document.getElementById('contactForm').addEventListener('submit', function (e) {
-   e.preventDefault();
-
-   // Get form data
-   const formData = {
-      name: document.getElementById('name').value,
-      email: document.getElementById('email').value,
-      subject: document.getElementById('subject').value,
-      message: document.getElementById('message').value
-   };
-
-   // Show success message
-   const submitBtn = this.querySelector('button[type="submit"]');
-   const originalText = submitBtn.textContent;
-   submitBtn.textContent = 'Message Sent! ✓';
-   submitBtn.style.background = 'linear-gradient(135deg, #4ade80, #22c55e)';
-
-   // Reset form
-   this.reset();
-
-   // Reset button after 3 seconds
-   setTimeout(() => {
-      submitBtn.textContent = originalText;
-      submitBtn.style.background = 'linear-gradient(135deg, #ff6b6b, #ff8e53)';
-   }, 3000);
-});
-
-// Add hover effect to contact form inputs
-document.querySelectorAll('#contactForm input, #contactForm textarea').forEach(input => {
-   input.addEventListener('focus', function () {
-      this.style.borderColor = 'rgba(0, 255, 204, 0.5)';
-      this.style.background = 'rgba(255, 255, 255, 0.08)';
-      this.style.boxShadow = '0 0 20px rgba(0, 255, 204, 0.1)';
-   });
-
-   input.addEventListener('blur', function () {
-      this.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-      this.style.background = 'rgba(255, 255, 255, 0.05)';
-      this.style.boxShadow = 'none';
-   });
-});
 
 // Metrics animation on scroll
 const metricsObserver = new IntersectionObserver((entries) => {
-   entries.forEach(entry => {
-      if (entry.isIntersecting) {
-         const metrics = entry.target.querySelectorAll('.metric-item');
-         metrics.forEach((metric, index) => {
-            setTimeout(() => {
-               metric.style.transform = 'translateY(0)';
-               metric.style.opacity = '1';
-            }, index * 100);
-         });
-      }
-   });
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const metrics = entry.target.querySelectorAll('.metric-item');
+            metrics.forEach((metric, index) => {
+                setTimeout(() => {
+                    metric.style.transform = 'translateY(0)';
+                    metric.style.opacity = '1';
+                }, index * 100);
+            });
+        }
+    });
 }, {
-   threshold: 0.3
+    threshold: 0.3
 });
 
 document.querySelectorAll('.metrics-grid').forEach(grid => {
-   metricsObserver.observe(grid);
+    metricsObserver.observe(grid);
 });
 
 // Initialize metrics animation state
 document.querySelectorAll('.metric-item').forEach(item => {
-   item.style.transform = 'translateY(20px)';
-   item.style.opacity = '0';
-   item.style.transition = 'all 0.5s ease';
+    item.style.transform = 'translateY(20px)';
+    item.style.opacity = '0';
+    item.style.transition = 'all 0.5s ease';
 });

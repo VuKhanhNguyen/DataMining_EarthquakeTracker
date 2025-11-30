@@ -3,15 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Graph Page - Modern Analytics Dashboard</title>
+    <title>Earthquake Tracker - Analytics Dashboard</title>
     <link rel="stylesheet" href="templatemo-graph-page.css">
-<!-- 
-
-TemplateMo 602 Graph Page
-
-https://templatemo.com/tm-602-graph-page
-
--->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body>
     <!-- Navigation -->
@@ -20,24 +15,18 @@ https://templatemo.com/tm-602-graph-page
             <a href="#home" class="logo">
                 <div class="logo-icon">
                     <svg viewBox="0 0 24 24">
-                        <path d="M3 13h2v8H3zm4-8h2v13H7zm4-2h2v15h-2zm4 4h2v11h-2zm4-2h2v13h-2z"/>
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                     </svg>
                 </div>
-                <span class="logo-text">Graph Page</span>
+                <span class="logo-text">Earthquake Tracker</span>
             </a>
             <ul class="nav-links">
-              li><a href="#home" class="active">Trang chủ</a></li>
-                <li><a href="#dashboard">Danh sách</a></li>
+                <li><a href="#home" class="active">Trang chủ</a></li>
+                <li><a href="#dashboard">Thống kê</a></li>
                 <li><a href="#analytics">Phân tích</a></li>
-                <li><a href="#reports">Báo cáo</a></li>
-                <li><a href="#contact">Liên hệ</a></li>
+                <li><a href="#prediction">Dự đoán</a></li>
+                <li><a href="#correlation">Tương quan</a></li>
             </ul>
-            <a href="https://www.google.com/search" target="_blank" rel="noopener" title="Search">
-                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <path d="m21 21-4.35-4.35"></path>
-                </svg>
-            </a>
             <div class="hamburger" id="hamburger">
                 <span></span>
                 <span></span>
@@ -45,11 +34,11 @@ https://templatemo.com/tm-602-graph-page
             </div>
         </div>
         <ul class="nav-links-mobile" id="navLinksMobile">
-          li><a href="#home" class="active">Trang chủ</a></li>
-                <li><a href="#dashboard">Danh sách</a></li>
-                <li><a href="#analytics">Phân tích</a></li>
-                <li><a href="#reports">Báo cáo</a></li>
-                <li><a href="#contact">Liên hệ</a></li> 
+            <li><a href="#home" class="active">Trang chủ</a></li>
+            <li><a href="#dashboard">Thống kê</a></li>
+            <li><a href="#analytics">Phân tích</a></li>
+            <li><a href="#prediction">Dự đoán</a></li>
+            <li><a href="#correlation">Tương quan</a></li>
         </ul>
     </nav>
 
@@ -60,466 +49,273 @@ https://templatemo.com/tm-602-graph-page
             <div class="shape shape1"></div>
             <div class="shape shape2"></div>
             <div class="shape shape3"></div>
-            <div class="shape shape4"></div>
-            <div class="shape shape5"></div>
-            <div class="shape shape6"></div>
         </div>
         
         <div class="hero-content">
             <div class="hero-text">
-                <h1>Phân Tích Dữ Liệu<br>Bảng Điều Khiển</h1>
-                <p>Biến dữ liệu của bạn thành những thông tin hữu ích với nền tảng phân tích hiện đại của chúng tôi. Theo dõi theo thời gian thực, dự đoán thông minh và các biểu đồ trực quan đẹp mắt.</p>
-        <a href="#dashboard" class="cta-button">Bắt đầu ngay</a>
-
+                <h1>Hệ Thống Giám Sát<br>Động Đất</h1>
+                <p>Theo dõi và phân tích hoạt động động đất toàn cầu với công nghệ AI tiên tiến. Dự đoán rủi ro, phân tích xu hướng và cảnh báo sớm.</p>
+                <a href="#dashboard" class="cta-button">Xem Dashboard</a>
             </div>
             
             <div class="hero-visual">
-                <div class="city-container">
-                    <div class="building building1">
-                        <div class="building-fill"></div>
-                        <div class="building-windows"></div>
-                    </div>
-                    <div class="building building2">
-                        <div class="building-fill"></div>
-                        <div class="building-windows"></div>
-                    </div>
-                    <div class="building building3">
-                        <div class="building-fill"></div>
-                        <div class="building-windows"></div>
-                    </div>
-                    <div class="building building4">
-                        <div class="building-fill"></div>
-                        <div class="building-windows"></div>
-                    </div>
-                    <div class="neon-line neon-line1"></div>
-                    <div class="neon-line neon-line2"></div>
+                <div class="earthquake-waves">
+                    <div class="wave wave1"></div>
+                    <div class="wave wave2"></div>
+                    <div class="wave wave3"></div>
+                    <div class="epicenter"></div>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- Dashboard Section -->
-   <section class="dashboard-section" id="dashboard">
-    <div class="dashboard-container">
-        <h2 class="section-title">Tổng Quan Dashboard</h2>
-        <!-- Stats Cards -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon">📊</div>
-                    <div class="stat-title">Tổng Doanh Thu</div>
-                </div>
-                <div class="stat-value">$42,847</div>
-                <div class="stat-description">Doanh thu tháng tăng 23% so với tháng trước với hiệu suất mạnh mẽ trên tất cả các kênh.</div>
-                <div class="stat-chart">
-                    <canvas class="mini-chart" id="miniChart1"></canvas>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon">👥</div>
-                    <div class="stat-title">Người Dùng Hoạt Động</div>
-                </div>
-                <div class="stat-value">18.5K</div>
-                <div class="stat-description">Phân tích theo thời gian thực hiển thị số người dùng đang tương tác với nền tảng.</div>
-                <div class="stat-chart">
-                    <canvas class="mini-chart" id="miniChart2"></canvas>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon">🎯</div>
-                    <div class="stat-title">Tỷ Lệ Chuyển Đổi</div>
-                </div>
-                <div class="stat-value">94.3%</div>
-                <div class="stat-description">Mức độ hài lòng khách hàng dựa trên khảo sát và phân tích phản hồi gần đây.</div>
-                <div class="stat-chart">
-                    <canvas class="mini-chart" id="miniChart3"></canvas>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon">🚀</div>
-                    <div class="stat-title">Điểm Hiệu Suất</div>
-                </div>
-                <div class="stat-value">7,392</div>
-                <div class="stat-description">Chỉ số hiệu suất hệ thống cho thấy hoạt động tối ưu trên tất cả dịch vụ.</div>
-                <div class="stat-chart">
-                    <canvas class="mini-chart" id="miniChart4"></canvas>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon">💰</div>
-                    <div class="stat-title">Tăng Trưởng Tháng</div>
-                </div>
-                <div class="stat-value">+28.5%</div>
-                <div class="stat-description">Tăng trưởng ổn định hàng tháng về lượng người dùng và doanh thu.</div>
-                <div class="stat-chart">
-                    <canvas class="mini-chart" id="miniChart5"></canvas>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon">⚡</div>
-                    <div class="stat-title">Thời Gian Hoạt Động</div>
-                </div>
-                <div class="stat-value">99.9%</div>
-                <div class="stat-description">Độ tin cậy vượt trội với thời gian gián đoạn tối thiểu, mang lại trải nghiệm liền mạch.</div>
-                <div class="stat-chart">
-                    <canvas class="mini-chart" id="miniChart6"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Analytics Section -->
-<section class="analytics-section" id="analytics">
-    <div class="dashboard-container">
-        <h2 class="section-title">Phân Tích Nâng Cao</h2>
-        
-        <!-- Key Metrics Overview -->
-        <div class="metrics-grid">
-            <div class="metric-item">
-                <div class="metric-value">2.4M</div>
-                <div class="metric-label">Lượt Xem Trang</div>
-            </div>
-            <div class="metric-item">
-                <div class="metric-value">156K</div>
-                <div class="metric-label">Khách Truy Cập Duy Nhất</div>
-            </div>
-            <div class="metric-item">
-                <div class="metric-value">4.2min</div>
-                <div class="metric-label">Thời Gian Phiên Trung Bình</div>
-            </div>
-            <div class="metric-item">
-                <div class="metric-value">68%</div>
-                <div class="metric-label">Tỷ Lệ Trở Lại</div>
-            </div>
-            <div class="metric-item">
-                <div class="metric-value">89</div>
-                <div class="metric-label">Điểm NPS</div>
-            </div>
-            <div class="metric-item">
-                <div class="metric-value">3.2K</div>
-                <div class="metric-label">Người Dùng Hoạt Động Hàng Ngày</div>
-            </div>
-        </div>
-
-        <!-- Chart Cards -->
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3 class="chart-title">📈 Xu Hướng Theo Tháng</h3>
-                    <div class="chart-options">
-                        <span class="chart-option active">2024</span>
-                        <span class="chart-option">2023</span>
-                        <span class="chart-option">2022</span>
+    <section class="dashboard-section" id="dashboard">
+        <div class="dashboard-container">
+            <h2 class="section-title">Thống Kê Động Đất</h2>
+            
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon">🌍</div>
+                        <div class="stat-title">Tổng Số Động Đất</div>
                     </div>
+                    <div class="stat-value" id="totalEarthquakes">0</div>
+                    <div class="stat-description">Tổng số động đất được ghi nhận trong cơ sở dữ liệu</div>
                 </div>
-                <div class="chart-container">
-                    <div class="bar-chart" id="barChart">
-                        <div class="bar" style="height: 60%">
-                            <span class="bar-value">120</span>
-                            <span class="bar-label">Th1</span>
-                        </div>
-                        <div class="bar" style="height: 80%">
-                            <span class="bar-value">180</span>
-                            <span class="bar-label">Th2</span>
-                        </div>
-                        <div class="bar" style="height: 45%">
-                            <span class="bar-value">90</span>
-                            <span class="bar-label">Th3</span>
-                        </div>
-                        <div class="bar" style="height: 70%">
-                            <span class="bar-value">140</span>
-                            <span class="bar-label">Th4</span>
-                        </div>
-                        <div class="bar" style="height: 90%">
-                            <span class="bar-value">200</span>
-                            <span class="bar-label">Th5</span>
-                        </div>
-                        <div class="bar" style="height: 65%">
-                            <span class="bar-value">130</span>
-                            <span class="bar-label">Th6</span>
-                        </div>
-                        <div class="bar" style="height: 75%">
-                            <span class="bar-value">150</span>
-                            <span class="bar-label">Th7</span>
-                        </div>
-                        <div class="bar" style="height: 85%">
-                            <span class="bar-value">170</span>
-                            <span class="bar-label">Th8</span>
-                        </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon">⚡</div>
+                        <div class="stat-title">Cường Độ Trung Bình</div>
                     </div>
+                    <div class="stat-value" id="avgMagnitude">0.0</div>
+                    <div class="stat-description">Cường độ động đất trung bình trên thang Richter</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-title">Độ Sâu Trung Bình</div>
+                    </div>
+                    <div class="stat-value" id="avgDepth">0.0 km</div>
+                    <div class="stat-description">Độ sâu trung bình của các trận động đất</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-title">Vùng Nguy Hiểm</div>
+                    </div>
+                    <div class="stat-value" id="riskZones">0</div>
+                    <div class="stat-description">Số vùng được phân loại có rủi ro cao</div>
                 </div>
             </div>
 
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3 class="chart-title">📊 Phân Tích Tăng Trưởng</h3>
-                    <div class="chart-options">
-                        <span class="chart-option active">Tuần</span>
-                        <span class="chart-option">Tháng</span>
-                        <span class="chart-option">Năm</span>
-                    </div>
+            <!-- Time Series Charts -->
+            <div class="time-charts-section">
+                <h3 class="subsection-title">📈 Phân Tích Theo Thời Gian</h3>
+                <div class="time-selector">
+                    <button class="time-btn active" data-period="day">Ngày</button>
+                    <button class="time-btn" data-period="week">Tuần</button>
+                    <button class="time-btn" data-period="month">Tháng</button>
                 </div>
-                <div class="chart-container">
-                    <div class="line-chart">
-                        <svg class="line-chart-svg" viewBox="0 0 500 300">
-                            <defs>
-                                <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                                    <stop offset="0%" style="stop-color:#00ffcc;stop-opacity:0.5" />
-                                    <stop offset="100%" style="stop-color:#00ffcc;stop-opacity:0" />
-                                </linearGradient>
-                            </defs>
-
-                            <!-- grid lines -->
-                            <line x1="0" y1="50" x2="500" y2="50" class="chart-grid-line" />
-                            <line x1="0" y1="100" x2="500" y2="100" class="chart-grid-line" />
-                            <line x1="0" y1="150" x2="500" y2="150" class="chart-grid-line" />
-                            <line x1="0" y1="200" x2="500" y2="200" class="chart-grid-line" />
-                            <line x1="0" y1="250" x2="500" y2="250" class="chart-grid-line" />
-
-                            <!-- Fill area -->
-                            <path d="M 0,200 L 62,180 L 125,150 L 187,170 L 250,120 L 312,140 L 375,100 L 437,130 L 500,110 L 500,300 L 0,300 Z" class="chart-area" />
-
-                            <!-- chart line -->
-                            <path d="M 0,200 L 62,180 L 125,150 L 187,170 L 250,120 L 312,140 L 375,100 L 437,130 L 500,110" class="chart-line" />
-
-                            <!-- dots -->
-                            <circle cx="0" cy="200" class="chart-dot" />
-                            <circle cx="62" cy="180" class="chart-dot" />
-                            <circle cx="125" cy="150" class="chart-dot" />
-                            <circle cx="187" cy="170" class="chart-dot" />
-                            <circle cx="250" cy="120" class="chart-dot" />
-                            <circle cx="312" cy="140" class="chart-dot" />
-                            <circle cx="375" cy="100" class="chart-dot" />
-                            <circle cx="437" cy="130" class="chart-dot" />
-                            <circle cx="500" cy="110" class="chart-dot" />
-                        </svg>
-                    </div>
-                </div>
-            </div>
-
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3 class="chart-title">🌍 Phân Bố Địa Lý</h3>
-                    <div class="chart-options">
-                        <span class="chart-option active">Toàn Cầu</span>
-                        <span class="chart-option">Mỹ</span>
-                        <span class="chart-option">EU</span>
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <div class="bar-chart">
-                        <div class="bar" style="height: 85%; background: linear-gradient(180deg, #ff6b6b 0%, #ff8e53 100%);">
-                            <span class="bar-value">42%</span>
-                            <span class="bar-label">USA</span>
-                        </div>
-                        <div class="bar" style="height: 65%; background: linear-gradient(180deg, #4ecdc4 0%, #44a08d 100%);">
-                            <span class="bar-value">28%</span>
-                            <span class="bar-label">EU</span>
-                        </div>
-                        <div class="bar" style="height: 45%; background: linear-gradient(180deg, #45b7d1 0%, #96c93d 100%);">
-                            <span class="bar-value">18%</span>
-                            <span class="bar-label">Châu Á</span>
-                        </div>
-                        <div class="bar" style="height: 25%; background: linear-gradient(180deg, #f093fb 0%, #f5576c 100%);">
-                            <span class="bar-value">12%</span>
-                            <span class="bar-label">Khác</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3 class="chart-title">📱 Phân Tích Thiết Bị</h3>
-                    <div class="chart-options">
-                        <span class="chart-option active">Tháng Này</span>
-                        <span class="chart-option">Tháng Trước</span>
-                        <span class="chart-option">Cả Năm</span>
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <div class="line-chart">
-                        <svg class="line-chart-svg" viewBox="0 0 500 300">
-                            <defs>
-                                <linearGradient id="gradient2" x1="0%" y1="0%" x2="0%" y2="100%">
-                                    <stop offset="0%" style="stop-color:#ff6b6b;stop-opacity:0.5" />
-                                    <stop offset="100%" style="stop-color:#ff6b6b;stop-opacity:0" />
-                                </linearGradient>
-                            </defs>
-
-                            <!-- Grid -->
-                            <line x1="0" y1="60" x2="500" y2="60" class="chart-grid-line" />
-                            <line x1="0" y1="120" x2="500" y2="120" class="chart-grid-line" />
-                            <line x1="0" y1="180" x2="500" y2="180" class="chart-grid-line" />
-                            <line x1="0" y1="240" x2="500" y2="240" class="chart-grid-line" />
-
-                            <!-- Mobile -->
-                            <path d="M 0,180 L 71,160 L 142,140 L 214,120 L 285,100 L 357,90 L 428,80 L 500,70"
-                                stroke="#ff6b6b" stroke-width="2" fill="none" />
-
-                            <!-- Desktop -->
-                            <path d="M 0,220 L 71,210 L 142,200 L 214,190 L 285,185 L 357,180 L 428,175 L 500,170"
-                                stroke="#00ffcc" stroke-width="2" fill="none" />
-
-                            <!-- Mobile dots -->
-                            <circle cx="0" cy="180" r="4" fill="#ff6b6b" />
-                            <circle cx="71" cy="160" r="4" fill="#ff6b6b" />
-                            <circle cx="142" cy="140" r="4" fill="#ff6b6b" />
-                            <circle cx="214" cy="120" r="4" fill="#ff6b6b" />
-                            <circle cx="285" cy="100" r="4" fill="#ff6b6b" />
-                            <circle cx="357" cy="90" r="4" fill="#ff6b6b" />
-                            <circle cx="428" cy="80" r="4" fill="#ff6b6b" />
-                            <circle cx="500" cy="70" r="4" fill="#ff6b6b" />
-
-                            <!-- Desktop dots -->
-                            <circle cx="0" cy="220" r="4" fill="#00ffcc" />
-                            <circle cx="71" cy="210" r="4" fill="#00ffcc" />
-                            <circle cx="142" cy="200" r="4" fill="#00ffcc" />
-                            <circle cx="214" cy="190" r="4" fill="#00ffcc" />
-                            <circle cx="285" cy="185" r="4" fill="#00ffcc" />
-                            <circle cx="357" cy="180" r="4" fill="#00ffcc" />
-                            <circle cx="428" cy="175" r="4" fill="#00ffcc" />
-                            <circle cx="500" cy="170" r="4" fill="#00ffcc" />
-
-                            <!-- Labels -->
-                            <text x="20" y="50" fill="#ff6b6b" font-size="12">Di động</text>
-                            <text x="20" y="35" fill="#00ffcc" font-size="12">Máy tính</text>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Reports Section -->
-<section class="reports-section" id="reports">
-    <div class="dashboard-container">
-        <h2 class="section-title">Báo Cáo & Thấu Hiểu</h2>
-        <div class="info-grid">
-            <div class="info-card">
-                <div class="info-icon">💼</div>
-                <h3 class="info-title">Trí Tuệ Doanh Nghiệp</h3>
-                <div class="info-value">98.5%</div>
-                <p style="font-size: 14px; color: #a0a0a0;">Độ chính xác trong phân tích dự đoán và mô hình dự báo kinh doanh.</p>
-            </div>
-            <div class="info-card">
-                <div class="info-icon">📱</div>
-                <h3 class="info-title">Phân Tích Di Động</h3>
-                <div class="info-value">2.4M</div>
-                <p style="font-size: 14px; color: #a0a0a0;">Lượt tải ứng dụng và các chỉ số tương tác của người dùng.</p>
-            </div>
-            <div class="info-card">
-                <div class="info-icon">🌍</div>
-                <h3 class="info-title">Phạm Vi Toàn Cầu</h3>
-                <div class="info-value">150+</div>
-                <p style="font-size: 14px; color: #a0a0a0;">Quốc gia đang sử dụng nền tảng phân tích của chúng tôi.</p>
-            </div>
-            <div class="info-card">
-                <div class="info-icon">🚀</div>
-                <h3 class="info-title">Chỉ Số Hiệu Suất</h3>
-                <div class="info-value">847</div>
-                <p style="font-size: 14px; color: #a0a0a0;">Điểm hiệu suất tổng hợp dựa trên tất cả chỉ số của nền tảng.</p>
-            </div>
-            <div class="info-card">
-                <div class="info-icon">⚡</div>
-                <h3 class="info-title">Thời Gian Phản Hồi</h3>
-                <div class="info-value">0.2s</div>
-                <p style="font-size: 14px; color: #a0a0a0;">Thời gian phản hồi API trung bình đảm bảo trải nghiệm tối ưu.</p>
-            </div>
-            <div class="info-card">
-                <div class="info-icon">📊</div>
-                <h3 class="info-title">Xử Lý Dữ Liệu</h3>
-                <div class="info-value">12TB</div>
-                <p style="font-size: 14px; color: #a0a0a0;">Dung lượng dữ liệu được xử lý hàng ngày qua hệ thống phân tích.</p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Contact Section -->
-<section class="contact-section" id="contact">
-    <div class="dashboard-container">
-        <h2 class="section-title">Liên Hệ Với Chúng Tôi</h2>
-        <div class="contact-grid">
-            <!-- Contact Form -->
-            <div class="contact-form">
-                <h3 style="margin-bottom: 30px; font-size: 24px;">Gửi Tin Nhắn</h3>
-                <form id="contactForm">
-                    <div class="form-group">
-                        <label for="name">Họ Và Tên</label>
-                        <input type="text" id="name" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="email">Địa Chỉ Email</label>
-                        <input type="email" id="email" name="email" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="subject">Chủ Đề</label>
-                        <input type="text" id="subject" name="subject" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="message">Tin Nhắn</label>
-                        <textarea id="message" name="message" required placeholder="Hãy cho chúng tôi biết bạn cần hỗ trợ gì..."></textarea>
-                    </div>
-                    <button type="submit" class="cta-button" style="width: 100%;">Gửi Tin Nhắn</button>
-                </form>
-            </div>
-
-            <!-- Contact Info -->
-            <div class="contact-info">
-                <h3>Thông Tin Liên Hệ</h3>
                 
-                <a href="mailto:hello@graphpage.com" class="contact-item">
-                    <div class="contact-icon">📧</div>
-                    <div class="contact-details">
-                        <h4>Email</h4>
-                        <p>hello@graphpage.com<br>support@graphpage.com</p>
+                <div class="charts-grid">
+                    <!-- Line Chart -->
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3 class="chart-title">📈 Biểu Đồ Đường - Xu Hướng Động Đất</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="lineChart"></canvas>
+                        </div>
                     </div>
-                </a>
 
-                <a href="tel:+15551234567" class="contact-item">
-                    <div class="contact-icon">📞</div>
-                    <div class="contact-details">
-                        <h4>Số Điện Thoại</h4>
-                        <p>+1 (555) 123-4567<br>Hỗ trợ 24/7</p>
+                    <!-- Scatter Chart -->
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3 class="chart-title">🔵 Biểu Đồ Phân Tán - Cường Độ vs Độ Sâu</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="scatterChart"></canvas>
+                        </div>
                     </div>
-                </a>
 
-                <a href="#" target="_blank" class="contact-item">
-                    <div class="contact-icon">📍</div>
-                    <div class="contact-details">
-                        <h4>Địa Chỉ Văn Phòng</h4>
-                        <p>123 Data Drive, Suite 100<br>Analytics City, AC 12345</p>
-                    </div>
-                </a>
-
-                <div class="contact-item">
-                    <div class="contact-icon">🕒</div>
-                    <div class="contact-details">
-                        <h4>Giờ Làm Việc</h4>
-                        <p>Thứ Hai - Thứ Sáu: 9:00 - 18:00<br>Cuối tuần: Hỗ trợ khẩn cấp</p>
+                    <!-- Histogram -->
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3 class="chart-title">📊 Histogram - Phân Bố Cường Độ</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="histogramChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
 
+    <!-- Analytics Section -->
+    <section class="analytics-section" id="analytics">
+        <div class="dashboard-container">
+            <h2 class="section-title">Phân Tích Nâng Cao</h2>
+            
+            <div class="charts-grid">
+                <!-- Trend Analysis -->
+                <div class="chart-card large">
+                    <div class="chart-header">
+                        <h3 class="chart-title">📈 Xu Hướng Dài Hạn (Resampled)</h3>
+                        <div class="chart-options">
+                            <span class="chart-option active" data-resample="week">Tuần</span>
+                            <span class="chart-option" data-resample="month">Tháng</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
 
+                <!-- Seasonal Analysis -->
+                <div class="chart-card large">
+                    <div class="chart-header">
+                        <h3 class="chart-title">🔄 Phân Tích Mùa Vụ</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="seasonalChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
+    <!-- Correlation Section -->
+    <section class="correlation-section" id="correlation">
+        <div class="dashboard-container">
+            <h2 class="section-title">Ma Trận Tương Quan</h2>
+            <div class="correlation-container">
+                <div class="chart-card full-width">
+                    <div class="chart-header">
+                        <h3 class="chart-title">🔗 Ma Trận Correlation</h3>
+                        <div class="correlation-legend">
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: #ff4444;"></span>
+                                <span>Tương quan âm mạnh</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: #ffaa00;"></span>
+                                <span>Tương quan yếu</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: #00ff88;"></span>
+                                <span>Tương quan dương mạnh</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="correlation-matrix" id="correlationMatrix">
+                        <!-- Matrix will be generated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
-<script src="templatemo-graph-script.js"></script>
+    <!-- Prediction Section -->
+    <section class="prediction-section" id="prediction">
+        <div class="dashboard-container">
+            <h2 class="section-title">Dự Đoán & Phân Loại</h2>
+            
+            <div class="prediction-grid">
+                <!-- Magnitude Prediction -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        <div class="prediction-icon">🎯</div>
+                        <h3>Dự Đoán Cường Độ Ngày Mai</h3>
+                    </div>
+                    <div class="prediction-value">
+                        <span class="predicted-magnitude" id="predictedMagnitude">4.2</span>
+                        <span class="prediction-unit">Richter</span>
+                    </div>
+                    <div class="prediction-confidence">
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: 85%"></div>
+                        </div>
+                        <span class="confidence-text">Độ tin cậy: 85%</span>
+                    </div>
+                    <div class="prediction-details">
+                        Dựa trên mô hình ML phân tích 30 ngày gần đây
+                    </div>
+                </div>
+
+                <!-- Risk Classification -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        <div class="prediction-icon">⚠️</div>
+                        <h3>Phân Loại Rủi Ro</h3>
+                    </div>
+                    <div class="risk-classification">
+                        <div class="risk-level high" id="riskLevel">
+                            <span class="risk-text">RỦI RO CAO</span>
+                        </div>
+                    </div>
+                    <div class="risk-details">
+                        <div class="risk-factors">
+                            <div class="factor">
+                                <span class="factor-label">Hoạt động địa chất:</span>
+                                <span class="factor-value">Tăng 23%</span>
+                            </div>
+                            <div class="factor">
+                                <span class="factor-label">Áp suất kiến tạo:</span>
+                                <span class="factor-value">Cao</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Depth Prediction -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        <div class="prediction-icon">📏</div>
+                        <h3>Dự Đoán Độ Sâu</h3>
+                    </div>
+                    <div class="prediction-value">
+                        <span class="predicted-depth" id="predictedDepth">15.7</span>
+                        <span class="prediction-unit">km</span>
+                    </div>
+                    <div class="prediction-confidence">
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: 78%"></div>
+                        </div>
+                        <span class="confidence-text">Độ tin cậy: 78%</span>
+                    </div>
+                </div>
+
+                <!-- Location Prediction -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        <div class="prediction-icon">🌍</div>
+                        <h3>Vùng Có Khả Năng Cao</h3>
+                    </div>
+                    <div class="hotspot-list">
+                        <div class="hotspot-item">
+                            <span class="hotspot-name">Ring of Fire - Thái Bình Dương</span>
+                            <span class="hotspot-prob">89%</span>
+                        </div>
+                        <div class="hotspot-item">
+                            <span class="hotspot-name">San Andreas Fault</span>
+                            <span class="hotspot-prob">76%</span>
+                        </div>
+                        <div class="hotspot-item">
+                            <span class="hotspot-name">Himalayan Belt</span>
+                            <span class="hotspot-prob">65%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="templatemo-graph-script.js"></script>
 </body>
 </html>
