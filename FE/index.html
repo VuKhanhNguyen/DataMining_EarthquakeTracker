@@ -166,7 +166,7 @@
                 <!-- Trend Analysis -->
                 <div class="chart-card large">
                     <div class="chart-header">
-                        <h3 class="chart-title">📈 Xu Hướng Dài Hạn (Resampled)</h3>
+                        <h3 class="chart-title">📈 Trend</h3>
                         <div class="chart-options">
                             <span class="chart-option active" data-resample="week">Tuần</span>
                             <span class="chart-option" data-resample="month">Tháng</span>
@@ -175,12 +175,12 @@
                     <div class="chart-container">
                         <canvas id="trendChart"></canvas>
                     </div>
-                </div>
+                </div> 
 
                 <!-- Seasonal Analysis -->
                 <div class="chart-card large">
                     <div class="chart-header">
-                        <h3 class="chart-title">🔄 Phân Tích Mùa Vụ</h3>
+                        <h3 class="chart-title">🔄 Seasonal line</h3>
                     </div>
                     <div class="chart-container">
                         <canvas id="seasonalChart"></canvas>
@@ -199,17 +199,15 @@
                     <div class="chart-header">
                         <h3 class="chart-title">🔗 Ma Trận Correlation</h3>
                         <div class="correlation-legend">
-                            <div class="legend-item">
-                                <span class="legend-color" style="background: #ff4444;"></span>
-                                <span>Tương quan âm mạnh</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color" style="background: #ffaa00;"></span>
-                                <span>Tương quan yếu</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color" style="background: #00ff88;"></span>
-                                <span>Tương quan dương mạnh</span>
+                            <div class="legend-gradient">
+                                <div class="gradient-bar"></div>
+                                <div class="gradient-labels">
+                                    <span>-1</span>
+                                    <span>-0.5</span>
+                                    <span>0</span>
+                                    <span>0.5</span>
+                                    <span>1</span>
+                                </div>
                             </div>
                         </div>
                     </div>

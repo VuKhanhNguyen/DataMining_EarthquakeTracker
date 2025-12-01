@@ -260,20 +260,40 @@ async function loadCorrelationMatrix() {
 
 // Load predictions
 async function loadPredictions() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/predictions`);
+   try {
+        console.log('Loading predictions from trained models...');
+        const response = await fetch(`${API_BASE_URL}/predictions/latest`);
         if (!response.ok) throw new Error('Failed to fetch predictions');
         
         const data = await response.json();
+        console.log('Prediction data from database:', data);
         updatePredictionsDisplay(data);
+        
+        // Log data sources for debugging
+        if (data.data_sources) {
+            console.log('Data sources available:', {
+                'ML Predictions': data.data_sources.has_ml_predictions,
+                'Analysis Stats': data.data_sources.has_analysis_stats,
+                'Cluster Info': data.data_sources.has_cluster_info,
+                'Last Analysis': data.data_sources.last_analysis
+            });
+        }
         
     } catch (error) {
         console.error('Error loading predictions:', error);
-        // Fallback predictions
+        // Enhanced fallback
         updatePredictionsDisplay({
-            predictions: [
-                { type: 'magnitude', value: 4.2, confidence: 85 },
-                { type: 'depth', value: 45.8, confidence: 78 }
+            magnitude_prediction: { value: 4.2, confidence: 75, model: "Fallback" },
+            depth_prediction: { value: 45.8, confidence: 68, unit: "km" },
+            risk_classification: { level: "Moderate", confidence: 70 },
+            risk_factors: {
+                geological_activity: "Không có dữ liệu",
+                tectonic_pressure: "Không xác định"
+            },
+            hotspots: [
+                {"name": "Ring of Fire - Thái Bình Dương", "probability": 89},
+                {"name": "San Andreas Fault", "probability": 76},
+                {"name": "Himalayan Belt", "probability": 65}
             ]
         });
     }
@@ -450,7 +470,7 @@ function initializeLineChart() {
     lineChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: data.map(d => d.date.toLocaleDateString()),
+            labels: data.map(d => d.date.toLocaleDateString('vi-VN')),
             datasets: [{
                 label: 'Số lượng động đất',
                 data: data.map(d => d.count),
@@ -683,7 +703,7 @@ function initializeTrendChart() {
     const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'] || [];
     
     // Calculate moving average for trend
-    const movingAvg = calculateMovingAverage(data.map(d => d.magnitude), 3);
+    const movingAvg = calculateMovingAverage(data.map(d => d.magnitude), 1);
     
     if (trendChart) {
         trendChart.destroy();
@@ -704,7 +724,7 @@ function initializeTrendChart() {
                     tension: 0.4
                 },
                 {
-                    label: 'Xu hướng (MA)',
+                    label: 'Xu hướng',
                     data: movingAvg,
                     borderColor: '#ff4444',
                     backgroundColor: 'transparent',
@@ -858,13 +878,10 @@ function initializeSeasonalChart() {
 function calculateMovingAverage(data, windowSize) {
     const result = [];
     for (let i = 0; i < data.length; i++) {
-        if (i < windowSize - 1) {
-            result.push(null);
-        } else {
-            const window = data.slice(i - windowSize + 1, i + 1);
-            const average = window.reduce((sum, val) => sum + val, 0) / windowSize;
-            result.push(average);
-        }
+        const start = Math.max(0, i - windowSize + 1);
+        const window = data.slice(start, i + 1);
+        const average = window.reduce((sum, val) => sum + val, 0) / window.length;
+        result.push(average);
     }
     return result;
 }
@@ -915,28 +932,249 @@ function renderCorrelationMatrix(correlationData) {
 
 // Update predictions display
 function updatePredictionsDisplay(data) {
-    if (!data.predictions || data.predictions.length === 0) return;
+    console.log('Updating predictions display with data:', data);
     
-    // Find magnitude prediction
-    const magPrediction = data.predictions.find(p => p.type === 'magnitude');
-    if (magPrediction) {
-        const magnitudeElement = document.getElementById('predictedMagnitude');
-        if (magnitudeElement) {
-            magnitudeElement.textContent = magPrediction.value.toFixed(1);
+    // Update magnitude prediction
+    if (data.magnitude_prediction) {
+        const magElement = document.getElementById('predictedMagnitude');
+        if (magElement) {
+            magElement.textContent = data.magnitude_prediction.value.toFixed(1);
         }
         
-        // Update risk level based on magnitude
-        updateRiskLevel(magPrediction.value);
+        // Update confidence bar for magnitude
+        const magConfidenceBar = document.querySelector('.prediction-card:nth-child(1) .confidence-fill');
+        const magConfidenceText = document.querySelector('.prediction-card:nth-child(1) .confidence-text');
+        if (magConfidenceBar && magConfidenceText) {
+            magConfidenceBar.style.width = `${data.magnitude_prediction.confidence}%`;
+            magConfidenceText.textContent = `Độ tin cậy: ${data.magnitude_prediction.confidence}%`;
+        }
+        
+        // Update model info with real model name
+        const magDetails = document.querySelector('.prediction-card:nth-child(1) .prediction-details');
+        if (magDetails) {
+            const model = data.magnitude_prediction.model || 'ML Model';
+            const note = data.magnitude_prediction.note || 'dựa trên dữ liệu được train';
+            magDetails.textContent = `Mô hình ${model} - ${note}`;
+        }
+        
+        // Update risk level based on predicted magnitude
+        updateRiskLevel(data.magnitude_prediction.value);
     }
     
-    // Find depth prediction
-    const depthPrediction = data.predictions.find(p => p.type === 'depth');
-    if (depthPrediction) {
+    // Update depth prediction with calculated values
+    if (data.depth_prediction) {
         const depthElement = document.getElementById('predictedDepth');
         if (depthElement) {
-            depthElement.textContent = depthPrediction.value.toFixed(1);
+            depthElement.textContent = data.depth_prediction.value.toFixed(1);
+        }
+        
+        // Update confidence bar for depth
+        const depthConfidenceBar = document.querySelector('.prediction-card:nth-child(3) .confidence-fill');
+        const depthConfidenceText = document.querySelector('.prediction-card:nth-child(3) .confidence-text');
+        if (depthConfidenceBar && depthConfidenceText) {
+            depthConfidenceBar.style.width = `${data.depth_prediction.confidence}%`;
+            depthConfidenceText.textContent = `Độ tin cậy: ${data.depth_prediction.confidence}%`;
+        }
+        
+        // Update depth calculation method
+        const depthCard = document.querySelector('.prediction-card:nth-child(3)');
+        let methodElement = depthCard.querySelector('.calculation-method');
+        if (!methodElement) {
+            methodElement = document.createElement('div');
+            methodElement.className = 'calculation-method';
+            methodElement.style.fontSize = '12px';
+            methodElement.style.color = '#a0a0a0';
+            methodElement.style.marginTop = '10px';
+            depthCard.appendChild(methodElement);
+        }
+        methodElement.textContent = data.depth_prediction.method || 'Tính từ tương quan magnitude-depth';
+    }
+    
+    // Update risk classification with ML results
+    if (data.risk_classification) {
+        updateRiskClassificationFromDB(data.risk_classification);
+    }
+    
+    // Update risk factors with real analysis data
+    if (data.risk_factors) {
+        updateRiskFactorsFromAnalysis(data.risk_factors);
+    }
+    
+    // Update hotspots with cluster data
+    if (data.hotspots) {
+        updateHotspotsFromClusters(data.hotspots);
+    }
+    
+    // Add data source indicator
+    addDataSourceIndicator(data.data_sources || {});
+}
+
+function updateRiskClassificationFromDB(riskData) {
+    const riskLevel = document.getElementById('riskLevel');
+    const riskText = riskLevel?.querySelector('.risk-text');
+    
+    if (!riskLevel || !riskText) return;
+    
+    const level = riskData.level.toLowerCase();
+    
+    if (level.includes('critical')) {
+        riskLevel.className = 'risk-level critical';
+        riskText.textContent = 'CẢNH BÁO KHẨN CẤP';
+    } else if (level.includes('high')) {
+        riskLevel.className = 'risk-level high';
+        riskText.textContent = 'RỦI RO CAO';
+    } else if (level.includes('moderate')) {
+        riskLevel.className = 'risk-level medium';
+        riskText.textContent = 'RỦI RO TRUNG BÌNH';
+    } else {
+        riskLevel.className = 'risk-level low';
+        riskText.textContent = 'RỦI RO THẤP';
+    }
+    
+    // Add model info for risk classification
+    const riskCard = document.querySelector('.prediction-card:nth-child(2)');
+    let modelInfo = riskCard.querySelector('.model-info');
+    if (!modelInfo) {
+        modelInfo = document.createElement('div');
+        modelInfo.className = 'model-info';
+        modelInfo.style.fontSize = '11px';
+        modelInfo.style.color = '#707070';
+        modelInfo.style.marginTop = '8px';
+        riskCard.querySelector('.risk-classification').appendChild(modelInfo);
+    }
+    
+    const model = riskData.model || 'Rule-based';
+    const confidence = riskData.confidence || 0;
+    modelInfo.textContent = `${model} (${confidence}% tin cậy)`;
+}
+
+function updateRiskFactorsFromAnalysis(factors) {
+    const geologicalActivity = document.querySelector('.factor:nth-child(1) .factor-value');
+    const tectonicPressure = document.querySelector('.factor:nth-child(2) .factor-value');
+    
+    if (geologicalActivity && factors.geological_activity) {
+        geologicalActivity.textContent = factors.geological_activity;
+        
+        // Color code based on activity trend
+        if (factors.activity_trend > 20) {
+            geologicalActivity.style.color = '#ff4444'; // Red for high increase
+        } else if (factors.activity_trend < -20) {
+            geologicalActivity.style.color = '#00ff88'; // Green for decrease
+        } else {
+            geologicalActivity.style.color = '#ffaa00'; // Orange for stable
         }
     }
+    
+    if (tectonicPressure && factors.tectonic_pressure) {
+        tectonicPressure.textContent = factors.tectonic_pressure;
+        
+        // Color code pressure levels
+        if (factors.tectonic_pressure === 'Cao') {
+            tectonicPressure.style.color = '#ff4444';
+        } else if (factors.tectonic_pressure === 'Trung bình') {
+            tectonicPressure.style.color = '#ffaa00';
+        } else {
+            tectonicPressure.style.color = '#00ff88';
+        }
+    }
+    
+    // Add recent activity info if available
+    if (factors.recent_activity) {
+        const riskDetails = document.querySelector('.risk-details');
+        let activityInfo = riskDetails.querySelector('.recent-activity');
+        if (!activityInfo) {
+            activityInfo = document.createElement('div');
+            activityInfo.className = 'recent-activity';
+            activityInfo.style.fontSize = '12px';
+            activityInfo.style.color = '#a0a0a0';
+            activityInfo.style.marginTop = '10px';
+            activityInfo.style.textAlign = 'center';
+            riskDetails.appendChild(activityInfo);
+        }
+        activityInfo.textContent = `Hoạt động gần đây: ${factors.recent_activity}`;
+    }
+}
+
+// New function for hotspots from cluster_info
+function updateHotspotsFromClusters(hotspots) {
+    const hotspotList = document.querySelector('.hotspot-list');
+    if (!hotspotList) return;
+    
+    hotspotList.innerHTML = '';
+    
+    hotspots.forEach(hotspot => {
+        const hotspotItem = document.createElement('div');
+        hotspotItem.className = 'hotspot-item';
+        
+        // Add risk level indicator
+        const riskColor = hotspot.risk_level === 'High' ? '#ff4444' : 
+                         hotspot.risk_level === 'Medium' ? '#ffaa00' : '#00ff88';
+        
+        hotspotItem.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 8px; height: 8px; background: ${riskColor}; border-radius: 50%;"></div>
+                <span class="hotspot-name">${hotspot.name}</span>
+            </div>
+            <span class="hotspot-prob">${hotspot.probability}%</span>
+        `;
+        
+        // Add location info if available
+        if (hotspot.location) {
+            const locationInfo = document.createElement('div');
+            locationInfo.style.fontSize = '10px';
+            locationInfo.style.color = '#707070';
+            locationInfo.style.gridColumn = '1 / -1';
+            locationInfo.textContent = hotspot.location;
+            hotspotItem.appendChild(locationInfo);
+        }
+        
+        hotspotList.appendChild(hotspotItem);
+    });
+}
+
+// Add data source indicator
+function addDataSourceIndicator(dataSources) {
+    const predictionSection = document.querySelector('.prediction-section .dashboard-container');
+    let indicator = predictionSection.querySelector('.data-source-indicator');
+    
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.className = 'data-source-indicator';
+        indicator.style.cssText = `
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 12px;
+            color: #a0a0a0;
+        `;
+        predictionSection.insertBefore(indicator, predictionSection.querySelector('.prediction-grid'));
+    }
+    
+    const hasML = dataSources.has_ml_predictions;
+    const hasAnalysis = dataSources.has_analysis_stats;
+    const hasCluster = dataSources.has_cluster_info;
+    
+    const status = hasML ? '🤖 ML Model' : '📊 Statistical';
+    const sources = [
+        hasML ? '✅ Trained ML Models' : '❌ No ML Models',
+        hasAnalysis ? '✅ Analysis Stats' : '❌ No Analysis Data',
+        hasCluster ? '✅ Cluster Info' : '❌ No Clustering'
+    ].join(' | ');
+    
+    const lastUpdate = dataSources.last_analysis ? 
+        `Cập nhật cuối: ${new Date(dataSources.last_analysis).toLocaleString('vi-VN')}` : 
+        'Chưa có dữ liệu phân tích';
+    
+    indicator.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>${status}</strong> - Nguồn dữ liệu: ${sources}
+            </div>
+            <div>${lastUpdate}</div>
+        </div>
+    `;
 }
 
 // Update risk level display
@@ -1041,7 +1279,7 @@ function updateTimeSeriesCharts() {
     
     // Update Line Chart
     if (lineChart && lineData && lineData.length > 0) {
-        lineChart.data.labels = lineData.map(d => d.date.toLocaleDateString());
+        lineChart.data.labels = lineData.map(d => d.date.toLocaleDateString('vi-VN'));
         lineChart.data.datasets[0].data = lineData.map(d => d.count);
         lineChart.update();
         console.log(`Line chart updated with ${lineData.length} data points`);

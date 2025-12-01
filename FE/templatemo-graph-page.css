@@ -546,21 +546,44 @@ nav.scrolled {
 
 .correlation-legend {
     display: flex;
+    flex-direction: column;
     gap: 20px;
     align-items: center;
 }
 
-.legend-item {
+.legend-gradient {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    gap: 5px;
 }
 
-.legend-color {
-    width: 20px;
+.gradient-bar {
+    width: 200px;
     height: 20px;
-    border-radius: 4px;
+    background: linear-gradient(to right, 
+        #ff4444 0%,     /* Strong negative correlation */
+        #ff8800 25%,    /* Weak negative correlation */
+        #ffffff 50%,    /* No correlation */
+        #88ff88 75%,    /* Weak positive correlation */
+        #00ff88 100%    /* Strong positive correlation */
+    );
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.gradient-labels {
+    display: flex;
+    justify-content: space-between;
+    width: 200px;
+    font-size: 12px;
+    color: #a0a0a0;
+}
+
+.legend-description {
+    font-size: 12px;
+    color: #a0a0a0;
+    text-align: center;
 }
 
 .correlation-matrix {
@@ -587,9 +610,10 @@ nav.scrolled {
 }
 
 .correlation-cell.header {
-    background: rgba(255, 68, 68, 0.2);
+    background: #ffeca1c4;
     font-weight: 600;
     font-size: 14px;
+    color: #1a1f3a;
 }
 
 .correlation-value {
