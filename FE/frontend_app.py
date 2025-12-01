@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 from datetime import datetime, timedelta
+import os
 
 # ==========================================
 # 1. CẤU HÌNH TRANG & CSS TÙY CHỈNH

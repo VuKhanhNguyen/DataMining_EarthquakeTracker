@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pydantic
 
 # Import từ file database.py 
-from database import SessionLocal, Earthquake, Prediction, AnalysisStat
+from .database import SessionLocal, Earthquake, Prediction, AnalysisStat
 
 # ==========================================
 # 1. CẤU HÌNH API & CORS

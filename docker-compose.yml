@@ -1,36 +1,34 @@
-# docker-compose.yml
 version: '3.8'
 
 services:
-  # 1. DATABASE SERVICE (PostgreSQL)
+  # 1. DATABASE SERVICE (MySQL)
   db:
-    image: postgres:14-alpine
+    image: mysql:8.0  # <<< THAY ĐỔI: Chuyển sang MySQL 8.0
     container_name: earthquake_db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: earthquakes_db
+      # Cấu hình biến môi trường cho MySQL
+      MYSQL_ROOT_PASSWORD: 123456  # <<< Cập nhật: Dùng mật khẩu root của bạn
+      MYSQL_DATABASE: earthquake_db   # <<< Cập nhật: Dùng tên DB của bạn
     ports:
-      # Mở port 5432 để bạn có thể kết nối từ bên ngoài nếu cần (vd: DBeaver)
-      - "5432:5432"
+      # Mở port 3306 (port mặc định của MySQL)
+      - "3306:3306"  # <<< THAY ĐỔI: Chuyển sang port 3306
     volumes:
-      # Lưu data vào máy host để không mất khi dừng container
-      - db_data:/var/lib/postgresql/data
+      # Lưu data vào máy host
+      - db_data:/var/lib/mysql  # <<< THAY ĐỔI: Đường dẫn volume cho MySQL
     restart: always
 
   # 2. DATA INGESTION SERVICE
   ingestion:
     build:
-      context: . # Build từ thư mục gốc
-      dockerfile: Ingestion/Dockerfile # Dùng Dockerfile trong thư mục Ingestion
+      context: .
+      dockerfile: Ingestion/Dockerfile
     container_name: data_ingestion
     depends_on:
-      - db # Chờ DB chạy xong mới chạy Ingestion
+      - db
     environment:
-      # Truyền thông tin kết nối DB vào môi trường
-      # Các file database.py và data_ingestion.py của bạn cần dùng các biến này
-      DATABASE_URL: postgresql://user:password@db:5432/earthquakes_db
-    restart: always
+      # Cập nhật DATABASE_URL sang format MySQL
+      DATABASE_URL: mysql+pymysql://root:123456@db:3306/earthquake_db # <<< THAY ĐỔI
+    restart: "no" # Tắt restart: always vì đây là service chạy một lần
 
   # 3. API SERVER SERVICE (Backend)
   api:
@@ -41,9 +39,9 @@ services:
     depends_on:
       - db
     environment:
-      DATABASE_URL: postgresql://user:password@db:5432/earthquakes_db
+      # Cập nhật DATABASE_URL sang format MySQL
+      DATABASE_URL: mysql+pymysql://root:123456@db:3306/earthquake_db # <<< THAY ĐỔI
     ports:
-      # Mở port 8000 để Frontend có thể gọi và bạn có thể truy cập trực tiếp
       - "8000:8000"
     restart: always
 
@@ -54,29 +52,23 @@ services:
       dockerfile: FE/Dockerfile
     container_name: earthquake_frontend
     depends_on:
-      - api # Chờ API chạy xong mới chạy Frontend
+      - api
     ports:
-      # Mở port 8501 để bạn truy cập Dashboard
       - "8501:8501"
-    # LƯU Ý: API_URL trong frontend_app.py là http://127.0.0.1:8000.
-    # Khi chạy trong Docker Compose, nó phải là http://api:8000 (tên service là 'api').
-    # Bạn nên đổi API_URL trong frontend_app.py thành "http://api:8000" hoặc 
-    # sử dụng environment variable để config.
     environment:
-      API_URL: http://api:8000
+      # Đã fix lỗi localhost bằng cách trỏ đến tên service 'api'
+      API_URL: http://api:8000 
     restart: always
 
 
-  # 5. STATIC WEB SERVICE (Phục vụ index.html)
+  # 5. STATIC WEB SERVICE
   static_web:
     build:
       context: .
-      # Dùng Dockerfile mới tạo
-      dockerfile: FE/Dockerfile.WEB 
+      dockerfile: FE/Dockerfile.WEB
     container_name: earthquake_static_web
     ports:
-      # Mở cổng 8080 để truy cập index.html
-      - "5500:80" 
+      - "5500:80"
     restart: always
 
 # Khai báo volume để lưu dữ liệu DB
