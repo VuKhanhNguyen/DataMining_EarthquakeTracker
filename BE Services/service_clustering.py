@@ -9,16 +9,12 @@ from sklearn.cluster import KMeans
 from datetime import datetime
 from Data_API.database import SessionLocal, Earthquake, ClusterInfo
 
-# Chạy 1 ngày 1 lần. Để test nhanh có thể sửa thành 60s
+# Chạy 1 ngày 1 lần.
 SLEEP_TIME = 86400 
-N_CLUSTERS = 5 # Số lượng cụm muốn chia (ví dụ: chia thế giới thành 5 vùng hoạt động)
+N_CLUSTERS = 5 
 
 def get_zone_name(lat, lon):
-    """
-    Xác định tên zone dựa trên tọa độ trung tâm cụm
-    """
-    # Định nghĩa các vùng địa lý chính với phạm vi mở rộng
-    
+
     # Bắc Mỹ (bao gồm Alaska, Canada, USA, Mexico)
     if lat >= 15 and lat <= 75 and lon >= -170 and lon <= -50:
         return "North America"
@@ -53,7 +49,7 @@ def get_zone_name(lat, lon):
     elif lat >= -50 and lat <= 0 and lon >= -180 and lon <= -160:
         return "Oceania"
     
-    # Thái Bình Dương (Trung tâm)
+    # Thái Bình Dương 
     elif lat >= -30 and lat <= 30 and lon >= 150 and lon <= -120:
         return "Pacific Ocean"
     elif lat >= -30 and lat <= 30 and lon >= -180 and lon <= -120:
@@ -75,7 +71,7 @@ def get_zone_name(lat, lon):
     elif lat <= -60:
         return "Antarctic Region"
     
-    # Trường hợp còn lại - với tên mô tả rõ ràng hơn
+    # Trường hợp còn lại
     else:
         # Xác định hướng địa lý
         ns = "North" if lat > 0 else "South"
@@ -89,15 +85,13 @@ def get_zone_name(lat, lon):
         else:
             ocean = "Atlantic Ocean"
         
-        return f"{ocean} - {ns}{ew} ({lat:.1f}, {lon:.1f})"
+        return f"{ocean} - {ns}{ew}"
 
 def run_clustering():
     session = SessionLocal()
     try:
         print(f"[{datetime.now()}] Bắt đầu Clustering (K-Means)...")
-        
-        # 1. Lấy toàn bộ dữ liệu (hoặc giới hạn 10.000 bản ghi mới nhất để nhanh)
-        # Chỉ cần lấy Lat, Lon để phân cụm địa lý
+
         query = session.query(Earthquake.id, Earthquake.latitude, Earthquake.longitude)
         df = pd.read_sql(query.statement, session.bind)
         
@@ -105,17 +99,12 @@ def run_clustering():
             print("-> Không đủ dữ liệu để phân cụm.")
             return
 
-        # 2. Chuẩn bị dữ liệu train
         X = df[['latitude', 'longitude']].values
         
-        # 3. Train K-Means
         kmeans = KMeans(n_clusters=N_CLUSTERS, random_state=42, n_init=10)
         kmeans.fit(X)
         
-        # Lấy nhãn (0, 1, 2...) gán lại vào DataFrame
         df['cluster_label'] = kmeans.labels_
-        
-        # 4. Update ngược lại vào Database (Batch Update)
         
         print("-> Đang cập nhật nhãn cụm vào Database...")
         for index, row in df.iterrows():
@@ -123,17 +112,41 @@ def run_clustering():
                 {"cluster_label": int(row['cluster_label'])}
             )
             
-        # 5. Lưu thông tin tâm cụm vào bảng cluster_info (Optional)
-        # Xóa thông tin cụm cũ
         session.query(ClusterInfo).delete(synchronize_session=False)
         session.commit()
         
-        centers = kmeans.cluster_centers_ # Tọa độ tâm cụm [lat, lon]
+        centers = kmeans.cluster_centers_ 
         #cluster_results = []
         for i, center in enumerate(centers):
-            # Logic giả định rủi ro dựa trên số lượng điểm trong cụm
+
             count_in_cluster = len(df[df['cluster_label'] == i])
-            risk = "High" if count_in_cluster > len(df)/N_CLUSTERS else "Medium"
+
+            cluster_earthquakes = df[df['cluster_label'] == i]
+            
+            cluster_ids = cluster_earthquakes['id'].tolist()
+            cluster_magnitudes = session.query(Earthquake.magnitude).filter(
+                Earthquake.id.in_(cluster_ids),
+                Earthquake.magnitude.isnot(None)
+            ).all()
+            
+            if cluster_magnitudes:
+                magnitudes = [m.magnitude for m in cluster_magnitudes]
+                avg_magnitude = sum(magnitudes) / len(magnitudes)
+                max_magnitude = max(magnitudes)
+            else:
+                avg_magnitude = 0
+                max_magnitude = 0
+            
+            is_high_count = count_in_cluster > len(df) / N_CLUSTERS
+            is_high_magnitude = max_magnitude >= 6.0 or avg_magnitude >= 5.0
+            is_moderate_magnitude = max_magnitude >= 4.5 or avg_magnitude >= 3.5
+            
+            if is_high_magnitude or (is_high_count and is_moderate_magnitude):
+                risk = "High"
+            elif is_moderate_magnitude or is_high_count:
+                risk = "Medium"
+            else:
+                risk = "Low"
             
             zone_name = get_zone_name(center[0], center[1])
             c_info = ClusterInfo(
@@ -156,29 +169,20 @@ def run_clustering():
         session.close()
 
 def run_clustering_service():
-    """Chạy service clustering định kỳ"""
+    
     print(f"Dịch vụ Phân cụm Bắt đầu (Chạy mỗi {SLEEP_TIME}s)...")
     while True:
         run_clustering()
         time.sleep(SLEEP_TIME)
 
 def run_clustering_with_params(custom_start=None, custom_end=None, n_clusters=None):
-    """
-    Chạy clustering với tham số tùy chỉnh
-    
-    Args:
-        custom_start (str): Ngày bắt đầu theo format YYYY-MM-DD (optional)
-        custom_end (str): Ngày kết thúc theo format YYYY-MM-DD (optional)
-        n_clusters (int): Số lượng cụm (optional)
-    """
+  
     session = SessionLocal()
     try:
-        # Sử dụng n_clusters custom hoặc mặc định
         num_clusters = n_clusters if n_clusters else N_CLUSTERS
         
         print(f"[{datetime.now()}] Đang chạy Phân cụm Tùy chỉnh với {num_clusters} cụm...")
-        
-        # 1. Lấy dữ liệu theo khoảng thời gian (nếu có)
+
         if custom_start and custom_end:
             start_date = datetime.strptime(custom_start, '%Y-%m-%d')
             end_date = datetime.strptime(custom_end, '%Y-%m-%d')
@@ -191,34 +195,28 @@ def run_clustering_with_params(custom_start=None, custom_end=None, n_clusters=No
         else:
             print("-> Sử dụng tất cả dữ liệu có sẵn")
             query = session.query(Earthquake.id, Earthquake.latitude, Earthquake.longitude)
-        
-        # Đọc vào DataFrame
+
         df = pd.read_sql(query.statement, session.bind)
         
         if len(df) < num_clusters:
             print(f"-> Không đủ dữ liệu để tạo {num_clusters} cụm. Có: {len(df)}")
             return {"error": f"Cần ít nhất {num_clusters} điểm dữ liệu, nhưng chỉ có {len(df)}"}
 
-        # 2. Chuẩn bị dữ liệu train
         X = df[['latitude', 'longitude']].values
-        
-        # 3. Train K-Means với số cluster tùy chỉnh
+
         from sklearn.cluster import KMeans
         kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
         kmeans.fit(X)
         
-        # Lấy nhãn gán lại vào DataFrame
         df['cluster_label'] = kmeans.labels_
-        
-        # 4. Update ngược lại vào Database
+       
         print("-> Đang cập nhật nhãn cụm vào Database...")
         for index, row in df.iterrows():
             session.query(Earthquake).filter(Earthquake.id == row['id']).update(
                 {"cluster_label": int(row['cluster_label'])}
             )
         session.commit()    
-        # 5. Lưu thông tin tâm cụm
-        # Xóa thông tin cụm cũ
+
         session.query(ClusterInfo).delete(synchronize_session=False)
         session.commit()
         centers = kmeans.cluster_centers_
@@ -226,10 +224,9 @@ def run_clustering_with_params(custom_start=None, custom_end=None, n_clusters=No
         
         for i, center in enumerate(centers):
             count_in_cluster = len(df[df['cluster_label'] == i])
-             # Tính cường độ trung bình và cường độ tối đa trong cụm
+
             cluster_earthquakes = df[df['cluster_label'] == i]
-            
-            # Lấy magnitude từ database cho cluster này
+
             cluster_ids = cluster_earthquakes['id'].tolist()
             cluster_magnitudes = session.query(Earthquake.magnitude).filter(
                 Earthquake.id.in_(cluster_ids),
@@ -244,8 +241,6 @@ def run_clustering_with_params(custom_start=None, custom_end=None, n_clusters=No
                 avg_magnitude = 0
                 max_magnitude = 0
             
-            # Logic phân loại rủi ro cải tiến
-            # Kết hợp cả số lượng và cường độ
             is_high_count = count_in_cluster > len(df) / num_clusters
             is_high_magnitude = max_magnitude >= 6.0 or avg_magnitude >= 5.0
             is_moderate_magnitude = max_magnitude >= 4.5 or avg_magnitude >= 3.5

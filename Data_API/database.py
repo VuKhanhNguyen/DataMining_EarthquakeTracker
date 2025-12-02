@@ -3,9 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
-# ==========================================
-# CẤU HÌNH KẾT NỐI DATABASE
-# ==========================================
+
 
 # DATABASE_URL = "mysql+pymysql://root:Nvk_09112004@localhost/earthquake_db"
 DATABASE_URL = os.getenv("DATABASE_URL", "mysql+pymysql://earthquake_user:earthquake_pass@db/earthquake_db")
@@ -14,26 +12,23 @@ engine = create_engine(DATABASE_URL, echo=False) # echo=True để xem log SQL
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# ==========================================
-# ĐỊNH NGHĨA CÁC BẢNG (MODELS)
-# ==========================================
 
 class Earthquake(Base):
     __tablename__ = "earthquakes"
 
-    id = Column(String(50), primary_key=True)  # ID từ USGS (vd: us7000k...)
+    id = Column(String(50), primary_key=True) 
     place = Column(String(255))
     magnitude = Column(Float)
     mag_type = Column(String(20))
-    time = Column(DateTime, index=True)        # Thời gian xảy ra
-    updated = Column(DateTime)                 # Thời gian cập nhật
+    time = Column(DateTime, index=True)        
+    updated = Column(DateTime)                 
     latitude = Column(DECIMAL(10, 6))
     longitude = Column(DECIMAL(11, 6))
     depth = Column(Float)
     url = Column(String(255))
     status = Column(String(50))
     tsunami = Column(Integer, default=0)
-    cluster_label = Column(Integer, nullable=True) # Dành cho service Clustering
+    cluster_label = Column(Integer, nullable=True) 
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Prediction(Base):
@@ -45,12 +40,12 @@ class Prediction(Base):
     # Loại dự báo: 'REGRESSION' (số) hoặc 'CLASSIFICATION' (nhãn)
     prediction_type = Column(String(20)) 
     
-    predicted_value = Column(Float, nullable=True)       # Vd: 5.5
-    predicted_label = Column(String(50), nullable=True)  # Vd: "High Risk"
-    confidence_score = Column(Float, nullable=True)      # Vd: 0.95
+    predicted_value = Column(Float, nullable=True)       
+    predicted_label = Column(String(50), nullable=True)  
+    confidence_score = Column(Float, nullable=True)    
     
-    target_date = Column(Date)                           # Dự báo cho ngày nào
-    model_name = Column(String(50))                      # Model nào dự báo
+    target_date = Column(Date)                        
+    model_name = Column(String(50))                 
 
 class AnalysisStat(Base):
     __tablename__ = "analysis_stats"
