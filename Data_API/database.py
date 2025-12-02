@@ -2,12 +2,13 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
-
+import os
 # ==========================================
 # CẤU HÌNH KẾT NỐI DATABASE
 # ==========================================
 
-DATABASE_URL = "mysql+pymysql://root:Nvk_09112004@localhost/earthquake_db"
+# DATABASE_URL = "mysql+pymysql://root:Nvk_09112004@localhost/earthquake_db"
+DATABASE_URL = os.getenv("DATABASE_URL", "mysql+pymysql://earthquake_user:earthquake_pass@db/earthquake_db")
 
 engine = create_engine(DATABASE_URL, echo=False) # echo=True để xem log SQL
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # Database Service
+  db:
+    image: mysql:8.0
+    container_name: earthquake_db
+    environment:
+      MYSQL_ROOT_PASSWORD: Nvk_09112004
+      MYSQL_DATABASE: earthquake_db
+      MYSQL_USER: earthquake_user
+      MYSQL_PASSWORD: earthquake_pass
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data API Service
+  api:
+    build:
+      context: ..
+      dockerfile: docker/dockerFile
+      target: data-api
+    container_name: earthquake_api
+    depends_on:
+      db:
+        condition: service_healthy
+      # This service will wait for the initial data processing to complete
+      run_backend_services:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://earthquake_user:earthquake_pass@db/earthquake_db
+
+  # Frontend Service (Nginx)
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/dockerFile
+      target: frontend
+    container_name: earthquake_frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+  # One-off container to run backend scripts sequentially
+  run_backend_services:
+    build:
+      context: ..
+      dockerfile: docker/dockerFile
+      target: backend-runner
+    container_name: backend_scripts_runner
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=mysql+pymysql://earthquake_user:earthquake_pass@db/earthquake_db
+    command: >
+      bash -c "
+        echo '--- Waiting for database... ---' &&
+        sleep 10 &&
+        echo '--- Starting Data Ingestion ---' &&
+        python Ingestion/data_ingestion.py custom 2025-09-01 2025-11-30 &&
+        echo '--- Starting Service Analysis ---' &&
+        python 'BE Services/service_analysis.py' custom 2025-09-01 2025-11-30 &&
+        echo '--- Starting Service Clustering ---' &&
+        python 'BE Services/service_clustering.py' custom 2025-09-01 2025-11-30 &&
+        echo '--- Starting Service Prediction ---' &&
+        python 'BE Services/service_prediction.py' custom 2025-09-01 2025-11-30 1 RandomForest &&
+        echo '--- All backend scripts executed successfully. ---'
+      "
+
+volumes:
+  mysql_data:

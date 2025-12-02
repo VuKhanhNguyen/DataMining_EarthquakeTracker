@@ -3,12 +3,12 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
-from typing import List, Optional
+from typing import List, Optional, Union
 from datetime import datetime, timedelta
 import pydantic
 
 # Import từ file database.py 
-from database import ClusterInfo, SessionLocal, Earthquake, Prediction, AnalysisStat
+from .database import ClusterInfo, SessionLocal, Earthquake, Prediction, AnalysisStat
 
 # ==========================================
 # 1. CẤU HÌNH API & CORS
@@ -55,7 +55,7 @@ class PredictionOut(pydantic.BaseModel):
     prediction_type: Optional[str]
     predicted_value: Optional[float]
     predicted_label: Optional[str]
-    target_date: Optional[pydantic.PastDate | pydantic.FutureDate] # Chấp nhận ngày quá khứ/tương lai
+    target_date: Optional[Union[pydantic.PastDate, pydantic.FutureDate]] # Chấp nhận ngày quá khứ/tương lai
     
     class Config:
         from_attributes = True
@@ -197,6 +197,15 @@ def trigger_clustering(db: Session = Depends(get_db)):
             run_clustering = getattr(module, "run_clustering", None)
             
             if run_clustering:
+                # Xóa dữ liệu clustering cũ trước khi chạy lại
+                try:
+                    db.query(ClusterInfo).delete()
+                    db.commit()
+                    print("Đã xóa dữ liệu clustering cũ.")
+                except Exception as e:
+                    db.rollback()
+                    raise HTTPException(status_code=500, detail=f"Lỗi khi xóa dữ liệu cũ: {str(e)}")
+
                 # Chạy clustering
                 run_clustering()
                 
@@ -675,27 +684,99 @@ def get_latest_prediction(db: Session = Depends(get_db)):
         }
         
         if latest_analysis:
-            # So sánh với ngưỡng trung bình để đánh giá xu hướng
-            baseline_events = 100  # Giả định ngưỡng bình thường
-            activity_change = ((latest_analysis.total_events_24h - baseline_events) / baseline_events) * 100
+            # Tính baseline dựa trên magnitude trung bình thay vì số lượng events
+            time_period_hours = 24  # Default 24h
             
-            if activity_change > 20:
-                risk_factors["geological_activity"] = f"Tăng {activity_change:.0f}%"
-            elif activity_change < -20:
-                risk_factors["geological_activity"] = f"Giảm {abs(activity_change):.0f}%"
+            # Kiểm tra khoảng thời gian phân tích
+            if hasattr(latest_analysis, 'analysis_start') and hasattr(latest_analysis, 'analysis_end'):
+                time_diff = latest_analysis.analysis_end - latest_analysis.analysis_start
+                time_period_hours = time_diff.total_seconds() / 3600
+            
+            # Tính baseline magnitude từ dữ liệu lịch sử
+            period_start = latest_analysis.analysis_start if hasattr(latest_analysis, 'analysis_start') else datetime.utcnow() - timedelta(hours=time_period_hours)
+            historical_start = period_start - timedelta(hours=time_period_hours * 3)
+            
+            # Lấy magnitude trung bình trong khoảng lịch sử để làm baseline
+            historical_magnitudes = db.query(Earthquake.magnitude).filter(
+                Earthquake.time >= historical_start,
+                Earthquake.time < period_start,
+                Earthquake.magnitude.isnot(None)
+            ).all()
+            
+            # Tính baseline magnitude
+            if historical_magnitudes:
+                baseline_magnitude = sum(mag.magnitude for mag in historical_magnitudes) / len(historical_magnitudes)
+            else:
+                # Fallback: ước tính từ toàn bộ DB
+                all_magnitudes = db.query(Earthquake.magnitude).filter(
+                    Earthquake.magnitude.isnot(None)
+                ).all()
+                
+                if all_magnitudes:
+                    baseline_magnitude = sum(mag.magnitude for mag in all_magnitudes) / len(all_magnitudes)
+                else:
+                    baseline_magnitude = 4.0  # Default global average
+            
+            # Lấy magnitude trung bình hiện tại từ analysis_stats hoặc tính từ DB
+            if hasattr(latest_analysis, 'avg_magnitude') and latest_analysis.avg_magnitude:
+                current_magnitude = latest_analysis.avg_magnitude
+            else:
+                # Tính từ DB cho khoảng thời gian analysis
+                current_magnitudes = db.query(Earthquake.magnitude).filter(
+                    Earthquake.time >= period_start,
+                    Earthquake.magnitude.isnot(None)
+                ).all()
+                
+                if current_magnitudes:
+                    current_magnitude = sum(mag.magnitude for mag in current_magnitudes) / len(current_magnitudes)
+                else:
+                    current_magnitude = baseline_magnitude
+            
+            # Tính % thay đổi magnitude
+            if baseline_magnitude > 0:
+                magnitude_change = ((current_magnitude - baseline_magnitude) / baseline_magnitude) * 100
+            else:
+                magnitude_change = 0
+            
+            # Debug log
+            print(f"DEBUG: current_mag={current_magnitude:.2f}, baseline_mag={baseline_magnitude:.2f}, change={magnitude_change:.1f}%")
+            
+            # Điều chỉnh ngưỡng % cho magnitude (nhỏ hơn vì magnitude ít biến động)
+            if time_period_hours <= 24:
+                high_threshold, low_threshold = 5, -5   # 5% thay vì 20%
+                max_change_limit = 25  # Giới hạn tối đa 25% cho 24h
+            elif time_period_hours <= 168:  # 1 tuần
+                high_threshold, low_threshold = 3, -3   # 3% thay vì 10%
+                max_change_limit = 15  # Giới hạn tối đa 15% cho 1 tuần
+            else:  # > 1 tuần (như 2 tháng)
+                high_threshold, low_threshold = 2, -2   # 2% thay vì 5%
+                max_change_limit = 10   # Giới hạn tối đa 10% cho dài hạn
+            
+            # Áp dụng giới hạn hợp lý cho magnitude
+            magnitude_change = max(-50, min(max_change_limit, magnitude_change))
+            
+            if magnitude_change > high_threshold:
+                risk_factors["geological_activity"] = f"Cường độ tăng {magnitude_change:.1f}%"
+                risk_factors["tectonic_pressure"] = "Cao" if magnitude_change > high_threshold * 2 else "Trung bình"
+            elif magnitude_change < low_threshold:
+                risk_factors["geological_activity"] = f"Cường độ giảm {abs(magnitude_change):.1f}%"
+                risk_factors["tectonic_pressure"] = "Thấp"
             else:
                 risk_factors["geological_activity"] = "Ổn định"
-            
-            # Đánh giá áp suất kiến tạo dựa trên magnitude trung bình
-            if latest_analysis.avg_magnitude > 4.5:
-                risk_factors["tectonic_pressure"] = "Cao"
-            elif latest_analysis.avg_magnitude > 3.5:
                 risk_factors["tectonic_pressure"] = "Trung bình"
-            else:
-                risk_factors["tectonic_pressure"] = "Thấp"
-                
-            risk_factors["recent_activity"] = f"{latest_analysis.total_events_24h} trận trong 24h"
-            risk_factors["activity_trend"] = activity_change
+            
+            # Cập nhật thông tin hoạt động gần đây
+            period_desc = "24h" if time_period_hours <= 24 else f"{int(time_period_hours/24)} ngày"
+            
+            # Đếm số events để hiển thị thông tin đầy đủ
+            event_count = db.query(Earthquake).filter(
+                Earthquake.time >= period_start,
+                Earthquake.time <= (latest_analysis.analysis_end if hasattr(latest_analysis, 'analysis_end') else datetime.utcnow())
+            ).count()
+            
+            # risk_factors["recent_activity"] = f"{event_count} trận, trung bình {current_magnitude:.1f}M trong {period_desc}"
+            risk_factors["activity_trend"] = magnitude_change
+            
         
         # Tạo hotspots từ cluster_info
         hotspots = []
@@ -802,4 +883,4 @@ def get_latest_prediction(db: Session = Depends(get_db)):
 if __name__ == "__main__":
     import uvicorn
     # Chạy server tại localhost:8000
-    uvicorn.run("api_server:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("api_server:app", host="127.0.0.1", port=8000, reload=False)

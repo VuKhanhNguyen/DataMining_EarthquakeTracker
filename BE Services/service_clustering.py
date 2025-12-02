@@ -116,7 +116,7 @@ def run_clustering():
         df['cluster_label'] = kmeans.labels_
         
         # 4. Update ngược lại vào Database (Batch Update)
-        # Cách này hơi chậm nếu data lớn, nhưng an toàn cho code đơn giản
+        
         print("-> Đang cập nhật nhãn cụm vào Database...")
         for index, row in df.iterrows():
             session.query(Earthquake).filter(Earthquake.id == row['id']).update(
@@ -126,8 +126,10 @@ def run_clustering():
         # 5. Lưu thông tin tâm cụm vào bảng cluster_info (Optional)
         # Xóa thông tin cụm cũ
         session.query(ClusterInfo).delete()
+        session.commit()
         
         centers = kmeans.cluster_centers_ # Tọa độ tâm cụm [lat, lon]
+        #cluster_results = []
         for i, center in enumerate(centers):
             # Logic giả định rủi ro dựa trên số lượng điểm trong cụm
             count_in_cluster = len(df[df['cluster_label'] == i])
@@ -218,7 +220,7 @@ def run_clustering_with_params(custom_start=None, custom_end=None, n_clusters=No
         # 5. Lưu thông tin tâm cụm
         # Xóa thông tin cụm cũ
         session.query(ClusterInfo).delete()
-        
+        session.commit()
         centers = kmeans.cluster_centers_
         cluster_results = []
         

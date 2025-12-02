@@ -85,8 +85,8 @@ async function loadInitialData() {
         await loadCorrelationMatrix();
         await loadPredictions();
     } catch (error) {
-        console.error('❌ Failed to load initial data:', error);
-        showGlobalError('Unable to connect to API server. Please ensure the backend is running.');
+        console.error('❌ Không thể tải dữ liệu ban đầu:', error);
+        showGlobalError('Không thể kết nối đến API server. Hãy đảm bảo rằng các BE Service đang chạy.');
     }
 }
 
@@ -159,11 +159,11 @@ async function loadTimeSeriesData() {
         }
         
         if (!hasAnyData) {
-            throw new Error('No time series data available for any period');
+            throw new Error('Không có dữ liệu chuỗi thời gian cho bất kỳ khoảng thời gian nào');
         }
         
     } catch (error) {
-        console.error('❌ TIME SERIES API ERROR:', error);
+        console.error('❌ LỖi TIME SERIES API:', error);
         showAPIError('Time Series', error);
         // Không tạo fallback data - để array rỗng
         earthquakeData = { daily: [], weekly: [], monthly: [] };
@@ -172,7 +172,7 @@ async function loadTimeSeriesData() {
 
 // Generate fallback data if API fails
 function generateFallbackTimeSeriesData() {
-    console.log('Generating comprehensive fallback time series data...');
+    console.log('Đang tạo dữ liệu chuỗi thời gian dự phòng toàn diện...');
     
     // Generate more diverse data
     earthquakeData = {
@@ -201,7 +201,7 @@ function generateFallbackTimeSeriesData() {
     });
     
     // Debug fallback data
-    console.log('Comprehensive fallback data generated:', {
+    console.log('Dữ liệu chuỗi thời gian dự phòng toàn diện đã được tạo:', {
         daily: earthquakeData.daily.length,
         weekly: earthquakeData.weekly.length,
         monthly: earthquakeData.monthly.length
@@ -229,11 +229,11 @@ async function loadCorrelationMatrix() {
         
         const correlationData = await response.json();
         renderCorrelationMatrix(correlationData);
-        console.log('✅ Real correlation matrix loaded');
+        console.log('✅ Ma trận tương quan thực đã được tải');
         
     } catch (error) {
-        console.error('❌ Correlation Matrix API Error:', error);
-        showAPIError('Correlation Matrix', error);
+        console.error('❌ LỖI API Ma trận tương quan:', error);
+        showAPIError('Ma trận tương quan', error);
         
         // Show error instead of fallback
         const correlationMatrix = document.getElementById('correlationMatrix');
@@ -249,9 +249,9 @@ async function loadCorrelationMatrix() {
                     color: #ff4444;
                     font-weight: bold;
                 ">
-                    ❌ CORRELATION DATA ERROR<br>
+                    ❌ LỖI DỮ LIỆU TƯƠNG QUAN<br>
                     <span style="font-size: 14px; opacity: 0.8;">
-                        No correlation data available from API
+                        Không có dữ liệu tương quan từ API
                     </span>
                 </div>
             `;
@@ -274,8 +274,8 @@ async function loadPredictions() {
         updatePredictionsDisplay(data);
         
     } catch (error) {
-        console.error('❌ PREDICTIONS API ERROR:', error);
-        showAPIError('Predictions', error);
+        console.error('❌ LỖI API DỰ ĐOÁN:', error);
+        showAPIError('Dự đoán', error);
         showPredictionError();
     }
 }
@@ -314,7 +314,7 @@ function showAPIError(apiType, error) {
             ${errorDetails.message || 'Unknown API error'}
         </div>
         <div style="font-size: 12px; opacity: 0.8;">
-            ${errorDetails.suggestion || 'Please check the backend service'}
+            ${errorDetails.suggestion || 'Vui lòng kiểm tra dịch vụ backend'}
         </div>
         <button onclick="this.parentElement.remove()" style="
             background: rgba(255,255,255,0.2);
@@ -360,7 +360,7 @@ function showChartError(canvas, message) {
     ctx.fillText(message, canvas.width / 2, canvas.height / 2 + 20);
     
     ctx.font = '12px Arial';
-    ctx.fillText('Run data_ingestion.py to collect earthquake data', canvas.width / 2, canvas.height / 2 + 50);
+    ctx.fillText('Chạy data_ingestion.py để thu thập dữ liệu động đất', canvas.width / 2, canvas.height / 2 + 50);
 }
 
 function showPredictionError() {
@@ -423,7 +423,7 @@ function showGlobalError(message) {
     errorBanner.innerHTML = `
         ⚠️ SYSTEM ERROR: ${message}
         <div style="font-size: 14px; margin-top: 10px; opacity: 0.9;">
-            Please ensure the backend API server is running on port 8000
+            Vui lòng đảm bảo rằng máy chủ API backend đang chạy trên cổng 8000
         </div>
     `;
     
@@ -539,7 +539,7 @@ function generateSampleData(count, period) {
     const data = [];
     const now = new Date();
     
-    console.log(`Generating ${count} sample data points for period: ${period}`);
+    console.log(`Đang tạo ${count} điểm dữ liệu mẫu cho khoảng thời gian: ${period}`);
     
     for (let i = count - 1; i >= 0; i--) {
         const date = new Date(now);
@@ -602,7 +602,7 @@ function initializeLineChart() {
     const data = earthquakeData[keyMapping[currentPeriod]] || [];
     
     if (data.length === 0) {
-        showChartError(canvas, 'No earthquake data available');
+        showChartError(canvas, 'Không có dữ liệu động đất');
         return;
     }
     
@@ -651,7 +651,7 @@ function initializeScatterChart() {
     const data = earthquakeData[keyMapping[currentPeriod]] || [];
     
     if (data.length === 0) {
-        showChartError(canvas, 'No earthquake data for scatter plot');
+        showChartError(canvas, 'Không có dữ liệu động đất cho biểu đồ phân tán');
         return;
     }
     
@@ -702,7 +702,7 @@ function initializeHistogramChart() {
     const data = earthquakeData[keyMapping[currentPeriod]] || [];
     
     if (data.length === 0) {
-        showChartError(canvas, 'No data for magnitude histogram');
+        showChartError(canvas, 'Không có dữ liệu cho biểu đồ phân phối cường độ');
         return;
     }
     
@@ -758,7 +758,7 @@ function initializeHistogramChart() {
 function initializeTrendChart() {
     const canvas = document.getElementById('trendChart');
     if (!canvas) {
-        console.error('trendChart canvas not found');
+        console.error('trendChart canvas không tìm thấy');
         return;
     }
     
@@ -766,8 +766,8 @@ function initializeTrendChart() {
     const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'] || [];
     
     if (data.length === 0) {
-        console.warn('❌ No data available for trend chart');
-        showChartError(canvas, `No ${currentResample}ly data for trend analysis`);
+        console.warn('❌ Không có dữ liệu cho biểu đồ xu hướng');
+        showChartError(canvas, `Không có dữ liệu ${currentResample} cho phân tích xu hướng`);
         return;
     }
     
@@ -846,7 +846,7 @@ function initializeTrendChart() {
 function initializeSeasonalChart() {
     const canvas = document.getElementById('seasonalChart');
     if (!canvas) {
-        console.error('seasonalChart canvas not found');
+        console.error('seasonalChart canvas không tìm thấy');
         return;
     }
     
@@ -870,11 +870,11 @@ function initializeSeasonalChart() {
             monthlyCounts[index] > 0 ? sum / monthlyCounts[index] : 0
         );
         
-        console.log('✅ Using real seasonal data from API');
+        console.log('✅ Sử dụng dữ liệu mùa vụ thực từ API');
     } else {
         // Không có dữ liệu thực -> hiển thị lỗi thay vì fallback
-        console.warn('❌ No monthly data available for seasonal chart');
-        showChartError(canvas, 'No monthly data for seasonal analysis');
+        console.warn('❌ Không có dữ liệu tháng cho biểu đồ mùa vụ');
+        showChartError(canvas, 'Không có dữ liệu tháng cho phân tích mùa vụ');
         return;
     }
     
@@ -959,7 +959,7 @@ function renderCorrelationMatrix(correlationData) {
     const correlationMatrix = document.getElementById('correlationMatrix');
     
     if (!correlationMatrix) {
-        console.error('correlationMatrix element not found');
+        console.error('correlationMatrix không tìm thấy');
         return;
     }
     
@@ -1000,7 +1000,7 @@ function renderCorrelationMatrix(correlationData) {
 
 // Update predictions display
 function updatePredictionsDisplay(data) {
-    console.log('Updating predictions display with data:', data);
+    console.log('Đang cập nhật hiển thị dự đoán với dữ liệu:', data);
     
     // Update magnitude prediction
     if (data.magnitude_prediction) {
@@ -1168,7 +1168,7 @@ function updateRiskFactorsFromAnalysis(factors) {
             activityInfo.style.textAlign = 'center';
             riskDetails.appendChild(activityInfo);
         }
-        activityInfo.textContent = `Hoạt động gần đây: ${factors.recent_activity}`;
+        // activityInfo.textContent = `Hoạt động gần đây: ${factors.recent_activity}`;
     }
 }
 
@@ -1231,13 +1231,13 @@ function addDataSourceIndicator(dataSources) {
     
     const hasML = dataSources.has_ml_predictions;
     const hasAnalysis = dataSources.has_analysis_stats;
-    const hasCluster = dataSources.has_cluster_info;
+    // const hasCluster = dataSources.has_cluster_info;
     
     const status = hasML ? '🤖 ML Model' : '📊 Statistical';
     const sources = [
         hasML ? '✅ Trained ML Models' : '❌ No ML Models',
         hasAnalysis ? '✅ Analysis Stats' : '❌ No Analysis Data',
-        hasCluster ? '✅ Cluster Info' : '❌ No Clustering'
+        // hasCluster ? '✅ Cluster Info' : '❌ No Clustering'
     ].join(' | ');
     
     const lastUpdate = dataSources.last_analysis ? 
@@ -1361,7 +1361,7 @@ function updateTimeSeriesCharts() {
         lineChart.data.labels = lineData.map(d => d.date.toLocaleDateString('vi-VN'));
         lineChart.data.datasets[0].data = lineData.map(d => d.count);
         lineChart.update();
-        console.log(`✅ Line chart updated with ${lineData.length} real data points`);
+        console.log(`✅ Biểu đồ đường đã được cập nhật với ${lineData.length} điểm dữ liệu thực`);
     }
     
     // Update Scatter Chart  
@@ -1371,7 +1371,7 @@ function updateTimeSeriesCharts() {
             y: d.depth
         }));
         scatterChart.update();
-        console.log(`✅ Scatter chart updated with ${lineData.length} real data points`);
+        console.log(`✅ Biểu đồ scatter đã được cập nhật với ${lineData.length} điểm dữ liệu thực`);
     }
     
     // Update Histogram
@@ -1390,7 +1390,7 @@ function updateTimeSeriesCharts() {
         
         histogramChart.data.datasets[0].data = binCounts;
         histogramChart.update();
-        console.log(`✅ Histogram updated with real data distribution:`, binCounts);
+        console.log(`✅ Biểu đồ histogram đã được cập nhật với phân phối dữ liệu thực:`, binCounts);
     }
 }
 
@@ -1399,7 +1399,7 @@ function updateTrendChart() {
      const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'] || [];
     
     if (data.length === 0) {
-        console.warn('❌ No data for trend chart update');
+        console.warn('❌ Không có dữ liệu để cập nhật biểu đồ xu hướng');
         const canvas = document.getElementById('trendChart');
         if (canvas) {
             showChartError(canvas, `No ${currentResample}ly data available`);
@@ -1415,7 +1415,7 @@ function updateTrendChart() {
         trendChart.data.datasets[1].data = movingAvg;
         trendChart.update();
         
-        console.log(`✅ Trend chart updated with ${data.length} real data points`);
+        console.log(`✅ Biểu đồ xu hướng đã được cập nhật với ${data.length} điểm dữ liệu thực`);
     }
 }
 
@@ -1629,16 +1629,16 @@ async function loadTimeSeriesWithDateRange(startDate, endDate) {
                     depth: item.avg_depth || 0
                 }));
                 
-                console.log(`✅ Loaded custom ${period} data:`, data.length, 'items');
+                console.log(`✅ Dữ liệu tùy chỉnh ${period} đã được tải:`, data.length, 'items');
                 
             } catch (error) {
-                console.error(`❌ Error loading custom ${period} data:`, error);
+                console.error(`❌ Lỗi khi tải dữ liệu tùy chỉnh ${period}:`, error);
                 earthquakeData[keyName] = [];
             }
         }
         
     } catch (error) {
-        console.error('❌ Custom date range API error:', error);
+        console.error('❌ Lỗi API phạm vi ngày tùy chỉnh:', error);
         throw error;
     }
 }
@@ -1708,7 +1708,7 @@ function resetDateFilter() {
 // Trigger clustering manually
 async function triggerClustering() {
     try {
-        console.log('🔄 Triggering clustering...');
+        console.log('🔄 Đang kích hoạt clustering...');
         const response = await fetch(`${API_BASE_URL}/api/clustering`);
         
         if (!response.ok) {
@@ -1716,7 +1716,7 @@ async function triggerClustering() {
         }
         
         const result = await response.json();
-        console.log('✅ Clustering completed:', result);
+        console.log('✅ Clustering đã hoàn thành:', result);
         
         // Reload hotspots after clustering
         await loadPredictions();
@@ -1724,7 +1724,7 @@ async function triggerClustering() {
         return result;
         
     } catch (error) {
-        console.error('❌ Clustering Error:', error);
+        console.error('❌ Lỗi Clustering:', error);
         return null;
     }
 }
@@ -1732,7 +1732,7 @@ async function triggerClustering() {
 // Trigger prediction manually
 async function triggerPrediction() {
     try {
-        console.log('🔄 Triggering prediction...');
+        console.log('🔄 Đang kích hoạt dự đoán...');
         const response = await fetch(`${API_BASE_URL}/api/prediction/run`, {
             method: 'POST'
         });
@@ -1742,7 +1742,7 @@ async function triggerPrediction() {
         }
         
         const result = await response.json();
-        console.log('✅ Prediction completed:', result);
+        console.log('✅ Dự đoán đã hoàn thành:', result);
         
         // Reload predictions after completion
         await loadPredictions();
@@ -1750,7 +1750,7 @@ async function triggerPrediction() {
         return result;
         
     } catch (error) {
-        console.error('❌ Prediction Error:', error);
+        console.error('❌ Lỗi dự đoán:', error);
         return null;
     }
 }
