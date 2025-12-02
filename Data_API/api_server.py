@@ -172,6 +172,37 @@ def get_analysis_data(
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         
+        # --- THÊM LOGIC LƯU VÀO DATABASE ---
+        try:
+            # Lấy thông tin từ kết quả analysis
+            summary = result.get("summary", {})
+            
+            # Chuyển đổi chuỗi ngày tháng thành đối tượng datetime
+            analysis_start_dt = datetime.strptime(summary.get("start_date"), "%Y-%m-%d")
+            analysis_end_dt = datetime.strptime(summary.get("end_date"), "%Y-%m-%d")
+
+            # Tạo bản ghi AnalysisStat mới
+            new_stat = AnalysisStat(
+                timestamp=datetime.utcnow(),
+                analysis_start=analysis_start_dt,
+                analysis_end=analysis_end_dt,
+                total_events=summary.get("total_events"),
+                avg_magnitude=summary.get("avg_magnitude"),
+                max_magnitude=summary.get("max_magnitude"),
+                min_magnitude=summary.get("min_magnitude"),
+                avg_depth=summary.get("avg_depth")
+            )
+            
+            db.add(new_stat)
+            db.commit()
+            print("Đã lưu kết quả analysis vào database.")
+        
+        except Exception as db_error:
+            db.rollback()
+            # Không dừng thực thi nếu lưu lỗi, chỉ ghi log
+            print(f"Lỗi khi lưu analysis stat vào DB: {str(db_error)}")
+        # --- KẾT THÚC LOGIC LƯU ---
+        
         return result
         
     except Exception as e:
@@ -556,7 +587,7 @@ def get_correlation_matrix(db: Session = Depends(get_db)):
 
 # --- API Dự đoán ---
 @app.get("/api/predictions")
-def get_predictions(db: Session = Depends(get_db)):
+def get_predictions( start_date: Optional[str] = None, end_date: Optional[str] = None,db: Session = Depends(get_db)):
     """
     API lấy dự đoán mới nhất cho Dashboard
     """
@@ -879,6 +910,42 @@ def get_latest_prediction(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Lỗi trong API dự đoán: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Lỗi khi lấy dự đoán: {str(e)}")
+
+# ==========================================
+# 4. API XÓA DỮ LIỆU 
+# ==========================================
+
+@app.delete("/api/delete/all_data", status_code=200)
+def delete_all_data(db: Session = Depends(get_db)):
+    """
+    API để xóa TẤT CẢ dữ liệu từ các bảng chính.
+    """
+    try:
+        deleted_counts = {}
+        
+        # Xóa predictions
+        deleted_counts["predictions"] = db.query(Prediction).delete()
+        
+        # Xóa analysis stats
+        deleted_counts["analysis_stats"] = db.query(AnalysisStat).delete()
+        
+        # Xóa cluster info
+        deleted_counts["cluster_info"] = db.query(ClusterInfo).delete()
+        
+        # Xóa earthquakes (bảng lớn nhất, xóa cuối cùng)
+        deleted_counts["earthquakes"] = db.query(Earthquake).delete()
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "All data has been deleted successfully.",
+            "deleted_rows": deleted_counts
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"An error occurred while deleting data: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
