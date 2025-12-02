@@ -125,7 +125,7 @@ def run_clustering():
             
         # 5. Lưu thông tin tâm cụm vào bảng cluster_info (Optional)
         # Xóa thông tin cụm cũ
-        session.query(ClusterInfo).delete()
+        session.query(ClusterInfo).delete(synchronize_session=False)
         session.commit()
         
         centers = kmeans.cluster_centers_ # Tọa độ tâm cụm [lat, lon]
@@ -216,17 +216,46 @@ def run_clustering_with_params(custom_start=None, custom_end=None, n_clusters=No
             session.query(Earthquake).filter(Earthquake.id == row['id']).update(
                 {"cluster_label": int(row['cluster_label'])}
             )
-            
+        session.commit()    
         # 5. Lưu thông tin tâm cụm
         # Xóa thông tin cụm cũ
-        session.query(ClusterInfo).delete()
+        session.query(ClusterInfo).delete(synchronize_session=False)
         session.commit()
         centers = kmeans.cluster_centers_
         cluster_results = []
         
         for i, center in enumerate(centers):
             count_in_cluster = len(df[df['cluster_label'] == i])
-            risk = "High" if count_in_cluster > len(df)/num_clusters else "Medium"
+             # Tính cường độ trung bình và cường độ tối đa trong cụm
+            cluster_earthquakes = df[df['cluster_label'] == i]
+            
+            # Lấy magnitude từ database cho cluster này
+            cluster_ids = cluster_earthquakes['id'].tolist()
+            cluster_magnitudes = session.query(Earthquake.magnitude).filter(
+                Earthquake.id.in_(cluster_ids),
+                Earthquake.magnitude.isnot(None)
+            ).all()
+            
+            if cluster_magnitudes:
+                magnitudes = [m.magnitude for m in cluster_magnitudes]
+                avg_magnitude = sum(magnitudes) / len(magnitudes)
+                max_magnitude = max(magnitudes)
+            else:
+                avg_magnitude = 0
+                max_magnitude = 0
+            
+            # Logic phân loại rủi ro cải tiến
+            # Kết hợp cả số lượng và cường độ
+            is_high_count = count_in_cluster > len(df) / num_clusters
+            is_high_magnitude = max_magnitude >= 6.0 or avg_magnitude >= 5.0
+            is_moderate_magnitude = max_magnitude >= 4.5 or avg_magnitude >= 3.5
+            
+            if is_high_magnitude or (is_high_count and is_moderate_magnitude):
+                risk = "High"
+            elif is_moderate_magnitude or is_high_count:
+                risk = "Medium"
+            else:
+                risk = "Low"
             
             zone_name = get_zone_name(center[0], center[1])
             c_info = ClusterInfo(

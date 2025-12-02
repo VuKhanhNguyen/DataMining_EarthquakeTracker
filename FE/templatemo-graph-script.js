@@ -1059,18 +1059,64 @@ function updatePredictionsDisplay(data) {
     }
     
     // Update risk classification with ML results
-    if (data.risk_classification) {
-        updateRiskClassificationFromDB(data.risk_classification);
+    // Risk factors (Dựa trên dự đoán)
+    if (data.risk_factors) {
+        const geologicalEl = document.getElementById('geologicalActivity');
+        const tectonicEl = document.getElementById('tectonicPressure');
+        
+        if (geologicalEl) {
+            geologicalEl.textContent = data.risk_factors.geological_activity;
+        }
+        
+        if (tectonicEl) {
+            tectonicEl.textContent = data.risk_factors.tectonic_pressure;
+        }
     }
     
-    // Update risk factors with real analysis data
-    if (data.risk_factors) {
-        updateRiskFactorsFromAnalysis(data.risk_factors);
+    // Risk classification - QUAN TRỌNG: Cập nhật dựa trên risk_classification từ API
+    if (data.risk_classification) {
+        const riskLevel = document.getElementById('riskLevel');
+        if (riskLevel) {
+            const riskLevelText = data.risk_classification.level;
+            
+            // Xóa tất cả class cũ
+            riskLevel.className = 'risk-level';
+            
+            // Thêm class mới dựa trên level
+            if (riskLevelText.includes('CỰC CAO')) {
+                riskLevel.classList.add('extreme');
+                riskLevel.querySelector('.risk-text').textContent = 'RỦI RO CỰC CAO';
+            } else if (riskLevelText.includes('CAO')) {
+                riskLevel.classList.add('high');
+                riskLevel.querySelector('.risk-text').textContent = 'RỦI RO CAO';
+            } else if (riskLevelText.includes('TRUNG BÌNH')) {
+                riskLevel.classList.add('medium');
+                riskLevel.querySelector('.risk-text').textContent = 'RỦI RO TRUNG BÌNH';
+            } else if (riskLevelText.includes('THẤP')) {
+                riskLevel.classList.add('low');
+                riskLevel.querySelector('.risk-text').textContent = 'RỦI RO THẤP';
+            } else {
+                riskLevel.classList.add('very-low');
+                riskLevel.querySelector('.risk-text').textContent = 'RỦI RO RẤT THẤP';
+            }
+        }
     }
     
     // Update hotspots with cluster data
     if (data.hotspots) {
-        updateHotspotsFromClusters(data.hotspots);
+        const hotspotList = document.querySelector('.hotspot-list');
+        if (hotspotList) {
+            hotspotList.innerHTML = '';
+            data.hotspots.forEach(hotspot => {
+                const item = document.createElement('div');
+                item.className = 'hotspot-item';
+                item.innerHTML = `
+                    <span class="hotspot-name">${hotspot.name}</span>
+                    <span class="hotspot-prob">${hotspot.probability}%</span>
+                `;
+                hotspotList.appendChild(item);
+            });
+        }
     }
     
     // Add data source indicator

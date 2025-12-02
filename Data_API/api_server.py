@@ -178,9 +178,16 @@ def get_analysis_data(
             summary = result.get("summary", {})
             
             # Chuyển đổi chuỗi ngày tháng thành đối tượng datetime
-            analysis_start_dt = datetime.strptime(summary.get("start_date"), "%Y-%m-%d")
-            analysis_end_dt = datetime.strptime(summary.get("end_date"), "%Y-%m-%d")
+            # Sửa lỗi: Sử dụng start_date/end_date từ request nếu không có trong summary
+            analysis_start_str = summary.get("start_date") or start_date
+            analysis_end_str = summary.get("end_date") or end_date
 
+            # Thêm kiểm tra để đảm bảo giá trị không phải là None trước khi chuyển đổi
+            if not analysis_start_str or not analysis_end_str:
+                raise ValueError("Ngày bắt đầu hoặc ngày kết thúc bị thiếu khi lưu thống kê phân tích.")
+
+            analysis_start_dt = datetime.strptime(analysis_start_str, "%Y-%m-%d")
+            analysis_end_dt = datetime.strptime(analysis_end_str, "%Y-%m-%d")
             # Tạo bản ghi AnalysisStat mới
             new_stat = AnalysisStat(
                 timestamp=datetime.utcnow(),
@@ -190,7 +197,8 @@ def get_analysis_data(
                 avg_magnitude=summary.get("avg_magnitude"),
                 max_magnitude=summary.get("max_magnitude"),
                 min_magnitude=summary.get("min_magnitude"),
-                avg_depth=summary.get("avg_depth")
+                avg_depth=summary.get("avg_depth"),
+                strongest_quake_id=summary.get("strongest_quake_id")
             )
             
             db.add(new_stat)
@@ -662,19 +670,33 @@ def get_predictions( start_date: Optional[str] = None, end_date: Optional[str] =
 @app.get("/stats/summary")
 def get_stats_summary(db: Session = Depends(get_db)):
     """
-    Trả về thống kê nhanh trong 24h qua (tính trực tiếp từ DB nếu bảng stats chưa có dữ liệu)
+    Trả về thống kê nhanh. 
+    Ưu tiên lấy từ bản ghi analysis gần nhất, nếu không có sẽ tính trực tiếp trong 24h qua.
     """
-    # Lấy thời điểm 24h trước
+    # Thử lấy bản ghi analysis gần nhất (trong vòng 1 giờ qua)
+    last_hour = datetime.utcnow() - timedelta(hours=1)
+    latest_stat = db.query(AnalysisStat).filter(AnalysisStat.timestamp >= last_hour).order_by(desc(AnalysisStat.timestamp)).first()
+
+    if latest_stat:
+        # Nếu có bản ghi analysis gần đây, sử dụng nó
+        return {
+            "total_events": latest_stat.total_events,
+            "max_magnitude": latest_stat.max_magnitude,
+            "status": "From recent analysis",
+            "analysis_start": latest_stat.analysis_start.isoformat(),
+            "analysis_end": latest_stat.analysis_end.isoformat()
+        }
+    
+    # Fallback: Nếu không có, tính toán trực tiếp cho 24h qua
     last_24h = datetime.utcnow() - timedelta(hours=24)
     
-    # Query đếm số lượng và tìm max magnitude
     count = db.query(Earthquake).filter(Earthquake.time >= last_24h).count()
     max_mag = db.query(func.max(Earthquake.magnitude)).filter(Earthquake.time >= last_24h).scalar()
     
     return {
-        "total_events_24h": count,
-        "max_magnitude_24h": max_mag or 0.0,
-        "status": "Live calculation"
+        "total_events": count,
+        "max_magnitude": max_mag or 0.0,
+        "status": "Live calculation (24h)"
     }
 
 # --- API Lấy dữ liệu Dự báo (Cho phần Prediction) ---
@@ -700,119 +722,111 @@ def get_latest_prediction(db: Session = Depends(get_db)):
         # Lấy thông tin cluster để xác định vùng nguy hiểm
         cluster_info = db.query(ClusterInfo).all()
         
-        # Tính toán dự đoán depth dựa trên magnitude (nếu chưa có riêng)
-        predicted_depth = 50.0  # default
-        if latest_magnitude and latest_magnitude.predicted_value:
-            # Công thức đơn giản: depth ~ f(magnitude)
-            predicted_depth = max(5, min(200, 60 - (latest_magnitude.predicted_value - 4) * 8))
+        # ==============================================
+        # BƯỚC 1: XÁC ĐỊNH MAGNITUDE DỰ ĐOÁN
+        # ==============================================
+        predicted_magnitude = 4.0  # Default fallback
+        magnitude_confidence = 50
+        magnitude_source = "Fallback"
         
-        # Tính các yếu tố rủi ro từ analysis_stats
-        risk_factors = {
-            "geological_activity": "Ổn định",
-            "tectonic_pressure": "Trung bình",
-            "recent_activity": "Không có dữ liệu",
-            "activity_trend": 0
-        }
+        if latest_magnitude:
+            predicted_magnitude = latest_magnitude.predicted_value
+            magnitude_confidence = int((latest_magnitude.confidence_score or 0.85) * 100)
+            magnitude_source = latest_magnitude.model_name or "ML Model"
+        else:
+            # Fallback: Tính từ dữ liệu 7 ngày gần đây
+            recent_earthquakes = db.query(Earthquake.magnitude).filter(
+                Earthquake.time >= datetime.utcnow() - timedelta(days=7),
+                Earthquake.magnitude.isnot(None)
+            ).all()
+            
+            if recent_earthquakes:
+                avg_mag = sum(eq.magnitude for eq in recent_earthquakes) / len(recent_earthquakes)
+                predicted_magnitude = avg_mag
+                magnitude_confidence = 70
+                magnitude_source = "Statistical Average (7 days)"
+        
+        # ==============================================
+        # BƯỚC 2: TÍNH DEPTH DỰA TRÊN PREDICTED MAGNITUDE
+        # ==============================================
+        predicted_depth = max(5, min(200, 60 - (predicted_magnitude - 4) * 8))
+        depth_confidence = max(60, magnitude_confidence - 15)
+        
+        # ==============================================
+        # BƯỚC 3: PHÂN LOẠI RỦI RO DỰA TRÊN PREDICTED MAGNITUDE
+        # ==============================================
+        # LOGIC ĐỒNG NHẤT: Dùng predicted_magnitude thay vì historical max
+        if predicted_magnitude >= 7.0:
+            risk_level = "RỦI RO CỰC CAO"
+            geological_activity = f"CỰC NGUY HIỂM - Dự đoán {predicted_magnitude:.1f}M"
+            tectonic_pressure = "CỰC CAO"
+            risk_confidence = magnitude_confidence
+        elif predicted_magnitude >= 6.0:
+            risk_level = "RỦI RO CAO"
+            geological_activity = f"NGUY HIỂM - Dự đoán {predicted_magnitude:.1f}M"
+            tectonic_pressure = "CAO"
+            risk_confidence = magnitude_confidence
+        elif predicted_magnitude >= 5.0:
+            risk_level = "RỦI RO TRUNG BÌNH"
+            geological_activity = f"CẢNH BÁO - Dự đoán {predicted_magnitude:.1f}M"
+            tectonic_pressure = "TRUNG BÌNH CAO"
+            risk_confidence = magnitude_confidence
+        elif predicted_magnitude >= 4.0:
+            risk_level = "RỦI RO THẤP"
+            geological_activity = f"ỔN ĐỊNH - Dự đoán {predicted_magnitude:.1f}M"
+            tectonic_pressure = "TRUNG BÌNH"
+            risk_confidence = magnitude_confidence
+        else:
+            risk_level = "RỦI RO RẤT THẤP"
+            geological_activity = f"ỔN ĐỊNH - Dự đoán {predicted_magnitude:.1f}M"
+            tectonic_pressure = "THẤP"
+            risk_confidence = magnitude_confidence
+        
+        # ==============================================
+        # BƯỚC 4: BỔ SUNG THÔNG TIN TỪ LỊCH SỬ (CONTEXT)
+        # ==============================================
+        recent_activity_info = "Chưa có dữ liệu phân tích"
+        activity_trend = 0
         
         if latest_analysis:
-            # Tính baseline dựa trên magnitude trung bình thay vì số lượng events
-            time_period_hours = 24  # Default 24h
-            
-            # Kiểm tra khoảng thời gian phân tích
+            time_period_hours = 24
             if hasattr(latest_analysis, 'analysis_start') and hasattr(latest_analysis, 'analysis_end'):
                 time_diff = latest_analysis.analysis_end - latest_analysis.analysis_start
                 time_period_hours = time_diff.total_seconds() / 3600
             
-            # Tính baseline magnitude từ dữ liệu lịch sử
             period_start = latest_analysis.analysis_start if hasattr(latest_analysis, 'analysis_start') else datetime.utcnow() - timedelta(hours=time_period_hours)
-            historical_start = period_start - timedelta(hours=time_period_hours * 3)
+            period_end = latest_analysis.analysis_end if hasattr(latest_analysis, 'analysis_end') else datetime.utcnow()
             
-            # Lấy magnitude trung bình trong khoảng lịch sử để làm baseline
+            current_max_magnitude = latest_analysis.max_magnitude if hasattr(latest_analysis, 'max_magnitude') else 0
+            current_avg_magnitude = latest_analysis.avg_magnitude if hasattr(latest_analysis, 'avg_magnitude') else 0
+            
+            event_count = db.query(Earthquake).filter(
+                Earthquake.time >= period_start,
+                Earthquake.time <= period_end
+            ).count()
+            
+            period_desc = "24h" if time_period_hours <= 24 else f"{int(time_period_hours/24)} ngày"
+            recent_activity_info = f"{event_count} trận trong {period_desc} qua (max: {current_max_magnitude:.1f}M, avg: {current_avg_magnitude:.1f}M)"
+            
+            # Tính trend từ lịch sử (chỉ để tham khảo, không ảnh hưởng risk level)
+            historical_start = period_start - timedelta(hours=time_period_hours * 2)
             historical_magnitudes = db.query(Earthquake.magnitude).filter(
                 Earthquake.time >= historical_start,
                 Earthquake.time < period_start,
                 Earthquake.magnitude.isnot(None)
             ).all()
             
-            # Tính baseline magnitude
             if historical_magnitudes:
                 baseline_magnitude = sum(mag.magnitude for mag in historical_magnitudes) / len(historical_magnitudes)
-            else:
-                # Fallback: ước tính từ toàn bộ DB
-                all_magnitudes = db.query(Earthquake.magnitude).filter(
-                    Earthquake.magnitude.isnot(None)
-                ).all()
-                
-                if all_magnitudes:
-                    baseline_magnitude = sum(mag.magnitude for mag in all_magnitudes) / len(all_magnitudes)
-                else:
-                    baseline_magnitude = 4.0  # Default global average
-            
-            # Lấy magnitude trung bình hiện tại từ analysis_stats hoặc tính từ DB
-            if hasattr(latest_analysis, 'avg_magnitude') and latest_analysis.avg_magnitude:
-                current_magnitude = latest_analysis.avg_magnitude
-            else:
-                # Tính từ DB cho khoảng thời gian analysis
-                current_magnitudes = db.query(Earthquake.magnitude).filter(
-                    Earthquake.time >= period_start,
-                    Earthquake.magnitude.isnot(None)
-                ).all()
-                
-                if current_magnitudes:
-                    current_magnitude = sum(mag.magnitude for mag in current_magnitudes) / len(current_magnitudes)
-                else:
-                    current_magnitude = baseline_magnitude
-            
-            # Tính % thay đổi magnitude
-            if baseline_magnitude > 0:
-                magnitude_change = ((current_magnitude - baseline_magnitude) / baseline_magnitude) * 100
-            else:
-                magnitude_change = 0
-            
-            # Debug log
-            print(f"DEBUG: current_mag={current_magnitude:.2f}, baseline_mag={baseline_magnitude:.2f}, change={magnitude_change:.1f}%")
-            
-            # Điều chỉnh ngưỡng % cho magnitude (nhỏ hơn vì magnitude ít biến động)
-            if time_period_hours <= 24:
-                high_threshold, low_threshold = 5, -5   # 5% thay vì 20%
-                max_change_limit = 25  # Giới hạn tối đa 25% cho 24h
-            elif time_period_hours <= 168:  # 1 tuần
-                high_threshold, low_threshold = 3, -3   # 3% thay vì 10%
-                max_change_limit = 15  # Giới hạn tối đa 15% cho 1 tuần
-            else:  # > 1 tuần (như 2 tháng)
-                high_threshold, low_threshold = 2, -2   # 2% thay vì 5%
-                max_change_limit = 10   # Giới hạn tối đa 10% cho dài hạn
-            
-            # Áp dụng giới hạn hợp lý cho magnitude
-            magnitude_change = max(-50, min(max_change_limit, magnitude_change))
-            
-            if magnitude_change > high_threshold:
-                risk_factors["geological_activity"] = f"Cường độ tăng {magnitude_change:.1f}%"
-                risk_factors["tectonic_pressure"] = "Cao" if magnitude_change > high_threshold * 2 else "Trung bình"
-            elif magnitude_change < low_threshold:
-                risk_factors["geological_activity"] = f"Cường độ giảm {abs(magnitude_change):.1f}%"
-                risk_factors["tectonic_pressure"] = "Thấp"
-            else:
-                risk_factors["geological_activity"] = "Ổn định"
-                risk_factors["tectonic_pressure"] = "Trung bình"
-            
-            # Cập nhật thông tin hoạt động gần đây
-            period_desc = "24h" if time_period_hours <= 24 else f"{int(time_period_hours/24)} ngày"
-            
-            # Đếm số events để hiển thị thông tin đầy đủ
-            event_count = db.query(Earthquake).filter(
-                Earthquake.time >= period_start,
-                Earthquake.time <= (latest_analysis.analysis_end if hasattr(latest_analysis, 'analysis_end') else datetime.utcnow())
-            ).count()
-            
-            # risk_factors["recent_activity"] = f"{event_count} trận, trung bình {current_magnitude:.1f}M trong {period_desc}"
-            risk_factors["activity_trend"] = magnitude_change
-            
+                if baseline_magnitude > 0:
+                    activity_trend = ((current_avg_magnitude - baseline_magnitude) / baseline_magnitude) * 100
         
-        # Tạo hotspots từ cluster_info
+        # ==============================================
+        # BƯỚC 5: TẠO HOTSPOTS TỪ CLUSTER INFO
+        # ==============================================
         hotspots = []
         if cluster_info:
-            for cluster in cluster_info[:3]:  # Lấy 3 cluster đầu
+            for cluster in cluster_info[:3]:
                 probability = 85 if cluster.risk_level == "High" else 65 if cluster.risk_level == "Medium" else 45
                 hotspots.append({
                     "name": cluster.cluster_name or f"Cluster {cluster.cluster_id}",
@@ -821,89 +835,49 @@ def get_latest_prediction(db: Session = Depends(get_db)):
                     "location": f"({cluster.centroid_lat:.2f}, {cluster.centroid_lon:.2f})"
                 })
         else:
-            # Fallback hotspots nếu chưa có clustering data
             hotspots = [
                 {"name": "Ring of Fire - Thái Bình Dương", "probability": 89, "risk_level": "High"},
                 {"name": "San Andreas Fault", "probability": 76, "risk_level": "High"}, 
                 {"name": "Himalayan Belt", "probability": 65, "risk_level": "Medium"}
             ]
         
-        # Format response cho Frontend
+        # ==============================================
+        # BƯỚC 6: TẠO RESPONSE ĐỒNG NHẤT
+        # ==============================================
         response = {
-            "magnitude_prediction": None,
+            "magnitude_prediction": {
+                "value": round(predicted_magnitude, 1),
+                "confidence": magnitude_confidence,
+                "target_date": (datetime.utcnow() + timedelta(days=1)).date().isoformat(),
+                "model": magnitude_source,
+                "note": "Dự đoán cho ngày mai"
+            },
             "depth_prediction": {
                 "value": round(predicted_depth, 1),
-                "confidence": 68,
+                "confidence": depth_confidence,
                 "unit": "km",
                 "method": ""
             },
-            "risk_classification": None,
-            "risk_factors": risk_factors,
+            "risk_classification": {
+                "level": risk_level,
+                "confidence": risk_confidence,
+                "method": f"Dựa trên magnitude dự đoán {predicted_magnitude:.1f}M"
+            },
+            "risk_factors": {
+                "geological_activity": geological_activity,
+                "tectonic_pressure": tectonic_pressure,
+                "recent_activity": recent_activity_info,
+                "activity_trend": round(activity_trend, 1)
+            },
             "hotspots": hotspots,
             "data_sources": {
                 "has_ml_predictions": latest_magnitude is not None,
                 "has_analysis_stats": latest_analysis is not None,
                 "has_cluster_info": len(cluster_info) > 0,
-                "last_analysis": latest_analysis.timestamp.isoformat() if latest_analysis else None
+                "last_analysis": latest_analysis.timestamp.isoformat() if latest_analysis else None,
+                "prediction_method": magnitude_source
             }
         }
-        
-        # Magnitude prediction từ ML model
-        if latest_magnitude:
-            confidence_percent = int((latest_magnitude.confidence_score or 0.85) * 100)
-            response["magnitude_prediction"] = {
-                "value": round(latest_magnitude.predicted_value, 1),
-                "confidence": confidence_percent,
-                "target_date": latest_magnitude.target_date.isoformat() if latest_magnitude.target_date else None,
-                "model": latest_magnitude.model_name or "Unknown",
-                "created_at": latest_magnitude.created_at.isoformat()
-            }
-            
-            # Cập nhật depth dựa trên magnitude thực tế
-            response["depth_prediction"]["value"] = round(60 - (latest_magnitude.predicted_value - 4) * 8, 1)
-            response["depth_prediction"]["confidence"] = max(60, confidence_percent - 15)
-        else:
-            # Fallback magnitude prediction từ dữ liệu gần đây
-            recent_earthquakes = db.query(Earthquake.magnitude).filter(
-                Earthquake.time >= datetime.utcnow() - timedelta(days=7),
-                Earthquake.magnitude.isnot(None)
-            ).all()
-            
-            if recent_earthquakes:
-                avg_mag = sum(eq.magnitude for eq in recent_earthquakes) / len(recent_earthquakes)
-                response["magnitude_prediction"] = {
-                    "value": round(avg_mag + (random.uniform(-0.3, 0.3) if 'random' in globals() else 0), 1),
-                    "confidence": 70,
-                    "target_date": (datetime.utcnow() + timedelta(days=1)).date().isoformat(),
-                    "model": "Statistical Average",
-                    "note": "Based on recent 7-day average"
-                }
-        
-        # Risk classification từ ML model
-        if latest_risk:
-            response["risk_classification"] = {
-                "level": latest_risk.predicted_label,
-                "confidence": int((latest_risk.confidence_score or 0.80) * 100),
-                "created_at": latest_risk.created_at.isoformat(),
-                "model": latest_risk.model_name
-            }
-        else:
-            # Fallback risk classification dựa trên predicted magnitude
-            predicted_mag = response["magnitude_prediction"]["value"] if response["magnitude_prediction"] else 4.0
-            if predicted_mag >= 6.5:
-                risk_level = "Critical Alert"
-            elif predicted_mag >= 5.5:
-                risk_level = "High"
-            elif predicted_mag >= 4.0:
-                risk_level = "Moderate"
-            else:
-                risk_level = "Low"
-                
-            response["risk_classification"] = {
-                "level": risk_level,
-                "confidence": 75,
-                "method": "Rule-based from magnitude"
-            }
         
         return response
         

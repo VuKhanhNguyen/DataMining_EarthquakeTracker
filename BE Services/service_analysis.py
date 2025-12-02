@@ -120,11 +120,15 @@ def run_analysis(custom_start=None, custom_end=None):
 
         # 3. Lưu vào bảng analysis_stats với thông tin mở rộng
         stat_entry = AnalysisStat(
-            total_events_24h=int(total_events),
+            timestamp=datetime.utcnow(),
+            analysis_start=start_date,
+            analysis_end=end_date,
+            total_events=int(total_events),
             avg_magnitude=float(avg_mag),
             max_magnitude=float(max_mag),
-            strongest_quake_id=strongest_id,
-            timestamp=datetime.utcnow()
+            min_magnitude=float(min_mag),
+            avg_depth=float(avg_depth),
+            strongest_quake_id=strongest_id
         )
         
         session.add(stat_entry)

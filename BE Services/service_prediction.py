@@ -260,7 +260,7 @@ def run_prediction():
         latest_stat = session.query(AnalysisStat).order_by(AnalysisStat.timestamp.desc()).first()
         
         # Nếu chưa có data analysis (lần đầu chạy), giả định mức hoạt động là 50 trận/ngày
-        current_activity_level = latest_stat.total_events_24h if latest_stat else 50
+        current_activity_level = latest_stat.total_events if latest_stat else 50
         print(f"-> Mức độ hoạt động: {current_activity_level} trận/24h")
 
         # ==========================================
@@ -549,7 +549,7 @@ def run_prediction_with_params(custom_start=None, custom_end=None, prediction_da
 
         # Lấy activity level (có thể từ analysis hoặc tính từ data hiện tại)
         latest_stat = session.query(AnalysisStat).order_by(AnalysisStat.timestamp.desc()).first()
-        current_activity_level = latest_stat.total_events_24h if latest_stat else len(df)
+        current_activity_level = latest_stat.total_events if latest_stat else len(df)
         
         df['activity_level'] = current_activity_level
 

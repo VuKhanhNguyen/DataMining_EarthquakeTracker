@@ -57,9 +57,13 @@ class AnalysisStat(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
-    total_events_24h = Column(Integer)
+    analysis_start = Column(DateTime)
+    analysis_end = Column(DateTime)
+    total_events = Column(Integer)
     avg_magnitude = Column(Float)
     max_magnitude = Column(Float)
+    min_magnitude = Column(Float)
+    avg_depth = Column(Float)
     strongest_quake_id = Column(String(50)) # Có thể FK sang earthquakes.id
 
 class ClusterInfo(Base):
