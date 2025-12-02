@@ -21,6 +21,30 @@ let earthquakeData = {
     monthly: []
 };
 
+// Thêm biến global cho time window
+let timeWindowStart = 0;
+let timeWindowSize = 30; // Hiển thị 30 ngày một lần
+let maxTimeWindowStart = 0;
+
+// Thêm biến global cho date range
+let customDateRange = {
+    startDate: '2025-01-01',
+    endDate: '2025-12-01',
+    isActive: false
+};
+
+// Hàm format ngày theo dd/mm/yyyy
+function formatDateVN(date) {
+    if (typeof date === 'string') {
+        date = new Date(date);
+    }
+    return date.toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit', 
+        year: 'numeric'
+    });
+}
+
 // Debug function to manually test API
 window.debugAPI = async function(period = 'week', days = 84) {
     try {
@@ -55,25 +79,14 @@ document.addEventListener('DOMContentLoaded', function() {
 // Load initial data from API
 async function loadInitialData() {
     try {
-        // Load stats
         await loadStats();
-        
-        // Load time series data for different periods
         await loadTimeSeriesData();
-        
-        // Initialize charts after data is loaded
-        initializeCharts();
-        
-        // Load correlation matrix
+        initializeCharts(); // Sẽ hiển thị empty charts nếu không có data
         await loadCorrelationMatrix();
-        
-        // Load predictions
         await loadPredictions();
-        
     } catch (error) {
-        console.error('Error loading initial data:', error);
-        // Fallback to sample data if API fails
-        loadFallbackData();
+        console.error('❌ Failed to load initial data:', error);
+        showGlobalError('Unable to connect to API server. Please ensure the backend is running.');
     }
 }
 
@@ -81,7 +94,10 @@ async function loadInitialData() {
 async function loadStats() {
     try {
         const response = await fetch(`${API_BASE_URL}/api/stats`);
-        if (!response.ok) throw new Error('Failed to fetch stats');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(JSON.stringify(errorData));
+        }
         
         const stats = await response.json();
         
@@ -92,12 +108,14 @@ async function loadStats() {
         animateValue('riskZones', 0, stats.risk_zones, 2000);
         
     } catch (error) {
-        console.error('Error loading stats:', error);
-        // Fallback stats
-        animateValue('totalEarthquakes', 0, 1234, 2000);
-        animateValue('avgMagnitude', 0, 4.2, 2000, 1);
-        animateValue('avgDepth', 0, 45.8, 2000, 1, ' km');
-        animateValue('riskZones', 0, 5, 2000);
+        console.error('❌ STATS API ERROR:', error);
+        showAPIError('Statistics', error);
+        
+        // Hiển thị ERROR thay vì fallback
+        document.getElementById('totalEarthquakes').textContent = 'ERROR';
+        document.getElementById('avgMagnitude').textContent = 'N/A';
+        document.getElementById('avgDepth').textContent = 'N/A';
+        document.getElementById('riskZones').textContent = 'N/A';
     }
 }
 
@@ -107,82 +125,48 @@ async function loadTimeSeriesData() {
         // Load data for different periods
         const periods = ['day', 'week', 'month'];
         const daysBacks = { day: 30, week: 84, month: 365 };
-        
+        let hasAnyData = false;
+
         for (const period of periods) {
-            const response = await fetch(
-                `${API_BASE_URL}/api/time-series?period=${period}&days_back=${daysBacks[period]}`
-            );
-            
-            if (response.ok) {
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/time-series?period=${period}&days_back=${daysBacks[period]}`
+                );
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(JSON.stringify(errorData));
+                }
+                
                 const data = await response.json();
                 const keyName = period === 'day' ? 'daily' : 
                               period === 'week' ? 'weekly' : 'monthly';
-                
-                console.log(`Loading ${period} data:`, data.length, 'items');
-                console.log('Raw API response sample:', data.slice(0, 2));
                 
                 earthquakeData[keyName] = data.map(item => ({
                     date: new Date(item.date),
                     count: item.count || 0,
                     magnitude: item.avg_magnitude || 0,
                     max_magnitude: item.max_magnitude || 0,
-                    depth: item.avg_depth || 0,
-                    latitude: 0,
-                    longitude: 0
+                    depth: item.avg_depth || 0
                 }));
+                hasAnyData = true;
+                console.log(`✅ Loaded ${period} data:`, data.length, 'items');
                 
-                console.log(`Processed ${keyName}:`, earthquakeData[keyName].length, 'items');
-            } else {
-                console.error(`Failed to load ${period} data:`, response.status);
+            } catch (periodError) {
+                console.error(`❌ Error loading ${period} data:`, periodError);
+                earthquakeData[keyName] = []; // Empty array thay vì fallback
             }
         }
         
-        // Debug final data
-        console.log('=== FINAL EARTHQUAKE DATA ===');
-        Object.keys(earthquakeData).forEach(key => {
-            console.log(`${key}:`, {
-                length: earthquakeData[key].length,
-                sample: earthquakeData[key].slice(0, 2).map(d => ({
-                    date: d.date.toLocaleDateString(),
-                    count: d.count,
-                    magnitude: d.magnitude,
-                    depth: d.depth
-                }))
-            });
-        });
-        
-        // Check if any period has insufficient data (less than minimum required)
-        const minRequiredData = { daily: 7, weekly: 4, monthly: 3 }; // Minimum points to show meaningful charts
-        const hasData = {
-            daily: earthquakeData.daily && earthquakeData.daily.length >= minRequiredData.daily,
-            weekly: earthquakeData.weekly && earthquakeData.weekly.length >= minRequiredData.weekly,
-            monthly: earthquakeData.monthly && earthquakeData.monthly.length >= minRequiredData.monthly
-        };
-        
-        console.log('Data availability (sufficient data):', hasData);
-        console.log('Actual data lengths:', {
-            daily: earthquakeData.daily ? earthquakeData.daily.length : 0,
-            weekly: earthquakeData.weekly ? earthquakeData.weekly.length : 0,
-            monthly: earthquakeData.monthly ? earthquakeData.monthly.length : 0
-        });
-        
-        // Always generate fallback for insufficient data
-        if (!hasData.daily) {
-            console.log('Generating fallback daily data (insufficient data)...');
-            earthquakeData.daily = generateSampleData(30, 'day');
-        }
-        if (!hasData.weekly) {
-            console.log('Generating fallback weekly data (insufficient data)...');
-            earthquakeData.weekly = generateSampleData(12, 'week');
-        }
-        if (!hasData.monthly) {
-            console.log('Generating fallback monthly data (insufficient data)...');
-            earthquakeData.monthly = generateSampleData(12, 'month');
+        if (!hasAnyData) {
+            throw new Error('No time series data available for any period');
         }
         
     } catch (error) {
-        console.error('Error loading time series data:', error);
-        generateFallbackTimeSeriesData();
+        console.error('❌ TIME SERIES API ERROR:', error);
+        showAPIError('Time Series', error);
+        // Không tạo fallback data - để array rỗng
+        earthquakeData = { daily: [], weekly: [], monthly: [] };
     }
 }
 
@@ -226,7 +210,7 @@ function generateFallbackTimeSeriesData() {
     // Show sample data for each period
     Object.keys(earthquakeData).forEach(key => {
         console.log(`${key} sample:`, earthquakeData[key].slice(0, 3).map(d => ({
-            date: d.date.toLocaleDateString(),
+            date: d.date.toLocaleDateString('vi-VN'),
             count: d.count,
             magnitude: d.magnitude.toFixed(1)
         })));
@@ -235,69 +219,237 @@ function generateFallbackTimeSeriesData() {
 
 // Load correlation matrix
 async function loadCorrelationMatrix() {
-    try {
+     try {
         const response = await fetch(`${API_BASE_URL}/api/correlation`);
-        if (!response.ok) throw new Error('Failed to fetch correlation');
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(JSON.stringify(errorData));
+        }
         
         const correlationData = await response.json();
         renderCorrelationMatrix(correlationData);
+        console.log('✅ Real correlation matrix loaded');
         
     } catch (error) {
-        console.error('Error loading correlation matrix:', error);
-        // Fallback correlation matrix
-        const fallbackData = {
-            variables: ['Cường độ', 'Độ sâu', 'Vĩ độ', 'Kinh độ'],
-            matrix: [
-                [1.00, -0.15, 0.05, -0.03],
-                [-0.15, 1.00, 0.08, 0.02],
-                [0.05, 0.08, 1.00, 0.12],
-                [-0.03, 0.02, 0.12, 1.00]
-            ]
-        };
-        renderCorrelationMatrix(fallbackData);
+        console.error('❌ Correlation Matrix API Error:', error);
+        showAPIError('Correlation Matrix', error);
+        
+        // Show error instead of fallback
+        const correlationMatrix = document.getElementById('correlationMatrix');
+        if (correlationMatrix) {
+            correlationMatrix.innerHTML = `
+                <div style="
+                    grid-column: 1 / -1;
+                    background: rgba(255, 68, 68, 0.1);
+                    border: 2px dashed #ff4444;
+                    border-radius: 10px;
+                    padding: 40px;
+                    text-align: center;
+                    color: #ff4444;
+                    font-weight: bold;
+                ">
+                    ❌ CORRELATION DATA ERROR<br>
+                    <span style="font-size: 14px; opacity: 0.8;">
+                        No correlation data available from API
+                    </span>
+                </div>
+            `;
+        }
     }
 }
 
 // Load predictions
 async function loadPredictions() {
-   try {
-        console.log('Loading predictions from trained models...');
+    try {
         const response = await fetch(`${API_BASE_URL}/predictions/latest`);
-        if (!response.ok) throw new Error('Failed to fetch predictions');
         
-        const data = await response.json();
-        console.log('Prediction data from database:', data);
-        updatePredictionsDisplay(data);
-        
-        // Log data sources for debugging
-        if (data.data_sources) {
-            console.log('Data sources available:', {
-                'ML Predictions': data.data_sources.has_ml_predictions,
-                'Analysis Stats': data.data_sources.has_analysis_stats,
-                'Cluster Info': data.data_sources.has_cluster_info,
-                'Last Analysis': data.data_sources.last_analysis
-            });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(JSON.stringify(errorData));
         }
         
+        const data = await response.json();
+        console.log('✅ Predictions loaded:', data);
+        updatePredictionsDisplay(data);
+        
     } catch (error) {
-        console.error('Error loading predictions:', error);
-        // Enhanced fallback
-        updatePredictionsDisplay({
-            magnitude_prediction: { value: 4.2, confidence: 75, model: "Fallback" },
-            depth_prediction: { value: 45.8, confidence: 68, unit: "km" },
-            risk_classification: { level: "Moderate", confidence: 70 },
-            risk_factors: {
-                geological_activity: "Không có dữ liệu",
-                tectonic_pressure: "Không xác định"
-            },
-            hotspots: [
-                {"name": "Ring of Fire - Thái Bình Dương", "probability": 89},
-                {"name": "San Andreas Fault", "probability": 76},
-                {"name": "Himalayan Belt", "probability": 65}
-            ]
-        });
+        console.error('❌ PREDICTIONS API ERROR:', error);
+        showAPIError('Predictions', error);
+        showPredictionError();
     }
 }
+
+// Error display functions
+function showAPIError(apiType, error) {
+    let errorDetails = {};
+    try {
+        errorDetails = JSON.parse(error.message).detail;
+    } catch {
+        errorDetails = { message: error.message };
+    }
+    
+    // Create floating error notification
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'api-error-notification';
+    errorDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #ff4444, #cc0000);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        max-width: 400px;
+        z-index: 9999;
+        box-shadow: 0 4px 20px rgba(255, 68, 68, 0.4);
+        animation: slideInRight 0.5s ease-out;
+    `;
+    
+    errorDiv.innerHTML = `
+        <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">
+            ❌ ${apiType.toUpperCase()} API ERROR
+        </div>
+        <div style="font-size: 14px; margin-bottom: 10px;">
+            ${errorDetails.message || 'Unknown API error'}
+        </div>
+        <div style="font-size: 12px; opacity: 0.8;">
+            ${errorDetails.suggestion || 'Please check the backend service'}
+        </div>
+        <button onclick="this.parentElement.remove()" style="
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            margin-top: 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            float: right;
+        ">Close</button>
+        <div style="clear: both;"></div>
+    `;
+    
+    document.body.appendChild(errorDiv);
+    
+    // Auto remove after 15 seconds
+    setTimeout(() => {
+        if (errorDiv.parentElement) {
+            errorDiv.style.animation = 'slideOutRight 0.5s ease-in';
+            setTimeout(() => errorDiv.remove(), 500);
+        }
+    }, 15000);
+}
+
+function showChartError(canvas, message) {
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    
+    // Clear canvas
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw error message
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('❌ NO DATA', canvas.width / 2, canvas.height / 2 - 10);
+    
+    ctx.fillStyle = '#a0a0a0';
+    ctx.font = '14px Arial';
+    ctx.fillText(message, canvas.width / 2, canvas.height / 2 + 20);
+    
+    ctx.font = '12px Arial';
+    ctx.fillText('Run data_ingestion.py to collect earthquake data', canvas.width / 2, canvas.height / 2 + 50);
+}
+
+function showPredictionError() {
+    // Clear all prediction values
+    const magElement = document.getElementById('predictedMagnitude');
+    if (magElement) {
+        magElement.textContent = '?.?';
+        magElement.style.color = '#ff4444';
+    }
+    
+    const depthElement = document.getElementById('predictedDepth');
+    if (depthElement) {
+        depthElement.textContent = '?.?';
+        depthElement.style.color = '#ff4444';
+    }
+    
+    // Update risk level
+    const riskLevel = document.getElementById('riskLevel');
+    if (riskLevel) {
+        riskLevel.className = 'risk-level error';
+        const riskText = riskLevel.querySelector('.risk-text');
+        if (riskText) riskText.textContent = 'NO DATA';
+    }
+    
+    // Update confidence bars
+    const confidenceBars = document.querySelectorAll('.confidence-fill');
+    const confidenceTexts = document.querySelectorAll('.confidence-text');
+    
+    confidenceBars.forEach(bar => {
+        bar.style.width = '0%';
+        bar.style.backgroundColor = '#ff4444';
+    });
+    
+    confidenceTexts.forEach(text => {
+        text.textContent = 'Model Error - No Training Data';
+        text.style.color = '#ff4444';
+    });
+}
+
+function showGlobalError(message) {
+    // Show main error banner
+    const main = document.querySelector('main') || document.body;
+    const errorBanner = document.createElement('div');
+    errorBanner.className = 'global-error-banner';
+    errorBanner.style.cssText = `
+        background: linear-gradient(135deg, #ff4444, #cc0000);
+        color: white;
+        padding: 20px;
+        text-align: center;
+        font-size: 18px;
+        font-weight: bold;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 10000;
+        box-shadow: 0 4px 20px rgba(255, 68, 68, 0.5);
+    `;
+    
+    errorBanner.innerHTML = `
+        ⚠️ SYSTEM ERROR: ${message}
+        <div style="font-size: 14px; margin-top: 10px; opacity: 0.9;">
+            Please ensure the backend API server is running on port 8000
+        </div>
+    `;
+    
+    document.body.insertBefore(errorBanner, document.body.firstChild);
+    document.body.style.paddingTop = '80px';
+}
+
+// CSS animations
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+    
+    .risk-level.error {
+        background: linear-gradient(135deg, #ff4444, #cc0000);
+        color: white;
+    }
+`;
+document.head.appendChild(style);
 
 // Navigation functionality
 function initializeNavigation() {
@@ -443,29 +595,18 @@ function initializeCharts() {
 // Line Chart - Time series of earthquake frequency
 function initializeLineChart() {
     const canvas = document.getElementById('lineChart');
-    if (!canvas) {
-        console.error('lineChart canvas not found');
-        return;
-    }
+    if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
     const keyMapping = { day: 'daily', week: 'weekly', month: 'monthly' };
     const data = earthquakeData[keyMapping[currentPeriod]] || [];
     
-    console.log(`Line Chart - Period: ${currentPeriod}, Key: ${keyMapping[currentPeriod]}, Data length: ${data.length}`);
-    
-    const minRequiredData = { day: 7, week: 4, month: 3 };
-    if (data.length < minRequiredData[currentPeriod]) {
-        console.warn(`Insufficient data for line chart (${data.length} items, need ${minRequiredData[currentPeriod]}), using fallback`);
-        const fallbackCounts = { day: 30, week: 12, month: 12 };
-        data = generateSampleData(fallbackCounts[currentPeriod], currentPeriod);
-        earthquakeData[keyMapping[currentPeriod]] = data;
-        console.log(`Generated ${data.length} fallback data points for line chart`);
+    if (data.length === 0) {
+        showChartError(canvas, 'No earthquake data available');
+        return;
     }
     
-    if (lineChart) {
-        lineChart.destroy();
-    }
+    if (lineChart) lineChart.destroy();
     
     lineChart = new Chart(ctx, {
         type: 'line',
@@ -478,38 +619,22 @@ function initializeLineChart() {
                 backgroundColor: 'rgba(255, 68, 68, 0.1)',
                 borderWidth: 3,
                 fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#ff4444',
-                pointBorderColor: '#ffffff',
-                pointBorderWidth: 2,
-                pointRadius: 5
+                tension: 0.4
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
+            plugins: { legend: { display: false } },
             scales: {
                 y: {
                     beginAtZero: true,
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0a0a0'
-                    }
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    ticks: { color: '#a0a0a0' }
                 },
                 x: {
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0a0a0'
-                    }
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    ticks: { color: '#a0a0a0' }
                 }
             }
         }
@@ -519,29 +644,18 @@ function initializeLineChart() {
 // Scatter Chart - Magnitude vs Depth
 function initializeScatterChart() {
     const canvas = document.getElementById('scatterChart');
-    if (!canvas) {
-        console.error('scatterChart canvas not found');
-        return;
-    }
+    if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
     const keyMapping = { day: 'daily', week: 'weekly', month: 'monthly' };
     const data = earthquakeData[keyMapping[currentPeriod]] || [];
     
-    console.log(`Scatter Chart - Period: ${currentPeriod}, Data length: ${data.length}`);
-    
-    const minRequiredData = { day: 7, week: 4, month: 3 };
-    if (data.length < minRequiredData[currentPeriod]) {
-        console.warn(`Insufficient data for scatter chart (${data.length} items, need ${minRequiredData[currentPeriod]}), using fallback`);
-        const fallbackCounts = { day: 30, week: 12, month: 12 };
-        data = generateSampleData(fallbackCounts[currentPeriod], currentPeriod);
-        earthquakeData[keyMapping[currentPeriod]] = data;
-        console.log(`Generated ${data.length} fallback data points for scatter chart`);
+    if (data.length === 0) {
+        showChartError(canvas, 'No earthquake data for scatter plot');
+        return;
     }
     
-    if (scatterChart) {
-        scatterChart.destroy();
-    }
+    if (scatterChart) scatterChart.destroy();
     
     scatterChart = new Chart(ctx, {
         type: 'scatter',
@@ -561,37 +675,17 @@ function initializeScatterChart() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
+            plugins: { legend: { display: false } },
             scales: {
                 y: {
-                    title: {
-                        display: true,
-                        text: 'Độ sâu (km)',
-                        color: '#ffffff'
-                    },
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0a0a0'
-                    }
+                    title: { display: true, text: 'Độ sâu (km)', color: '#ffffff' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    ticks: { color: '#a0a0a0' }
                 },
                 x: {
-                    title: {
-                        display: true,
-                        text: 'Cường độ (Richter)',
-                        color: '#ffffff'
-                    },
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0a0a0'
-                    }
+                    title: { display: true, text: 'Cường độ', color: '#ffffff' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    ticks: { color: '#a0a0a0' }
                 }
             }
         }
@@ -600,28 +694,19 @@ function initializeScatterChart() {
 
 // Histogram Chart - Magnitude distribution
 function initializeHistogramChart() {
-    const canvas = document.getElementById('histogramChart');
-    if (!canvas) {
-        console.error('histogramChart canvas not found');
-        return;
-    }
+     const canvas = document.getElementById('histogramChart');
+    if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
     const keyMapping = { day: 'daily', week: 'weekly', month: 'monthly' };
     const data = earthquakeData[keyMapping[currentPeriod]] || [];
     
-    console.log(`Histogram Chart - Period: ${currentPeriod}, Data length: ${data.length}`);
-    
-    const minRequiredData = { day: 7, week: 4, month: 3 };
-    if (data.length < minRequiredData[currentPeriod]) {
-        console.warn(`Insufficient data for histogram chart (${data.length} items, need ${minRequiredData[currentPeriod]}), using fallback`);
-        const fallbackCounts = { day: 30, week: 12, month: 12 };
-        data = generateSampleData(fallbackCounts[currentPeriod], currentPeriod);
-        earthquakeData[keyMapping[currentPeriod]] = data;
-        console.log(`Generated ${data.length} fallback data points for histogram chart`);
+    if (data.length === 0) {
+        showChartError(canvas, 'No data for magnitude histogram');
+        return;
     }
     
-    // Create magnitude bins
+    // Tạo magnitude bins
     const bins = [0, 2, 3, 4, 5, 6, 7, 8];
     const binCounts = new Array(bins.length - 1).fill(0);
     
@@ -634,9 +719,7 @@ function initializeHistogramChart() {
         }
     });
     
-    if (histogramChart) {
-        histogramChart.destroy();
-    }
+    if (histogramChart) histogramChart.destroy();
     
     histogramChart = new Chart(ctx, {
         type: 'bar',
@@ -653,38 +736,18 @@ function initializeHistogramChart() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
+            plugins: { legend: { display: false } },
             scales: {
                 y: {
                     beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Tần suất',
-                        color: '#ffffff'
-                    },
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0a0a0'
-                    }
+                    title: { display: true, text: 'Tần suất', color: '#ffffff' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    ticks: { color: '#a0a0a0' }
                 },
                 x: {
-                    title: {
-                        display: true,
-                        text: 'Cường độ (Richter)',
-                        color: '#ffffff'
-                    },
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0a0a0'
-                    }
+                    title: { display: true, text: 'Khoảng cường độ', color: '#ffffff' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    ticks: { color: '#a0a0a0' }
                 }
             }
         }
@@ -702,6 +765,12 @@ function initializeTrendChart() {
     const ctx = canvas.getContext('2d');
     const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'] || [];
     
+    if (data.length === 0) {
+        console.warn('❌ No data available for trend chart');
+        showChartError(canvas, `No ${currentResample}ly data for trend analysis`);
+        return;
+    }
+    
     // Calculate moving average for trend
     const movingAvg = calculateMovingAverage(data.map(d => d.magnitude), 1);
     
@@ -712,7 +781,7 @@ function initializeTrendChart() {
     trendChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: data.map(d => d.date.toLocaleDateString()),
+            labels: data.map(d => d.date.toLocaleDateString('vi-VN')),
             datasets: [
                 {
                     label: 'Cường độ trung bình',
@@ -783,8 +852,9 @@ function initializeSeasonalChart() {
     
     const ctx = canvas.getContext('2d');
     
-    // Use monthly data if available, otherwise generate seasonal pattern
-    let seasonalData;
+    // Chỉ sử dụng dữ liệu thực từ API, không tạo fallback
+    let seasonalData = null;
+    
     if (earthquakeData.monthly && earthquakeData.monthly.length > 0) {
         // Group by month and calculate averages
         const monthlyAverages = new Array(12).fill(0);
@@ -799,15 +869,13 @@ function initializeSeasonalChart() {
         seasonalData = monthlyAverages.map((sum, index) => 
             monthlyCounts[index] > 0 ? sum / monthlyCounts[index] : 0
         );
+        
+        console.log('✅ Using real seasonal data from API');
     } else {
-        // Generate seasonal pattern (fallback)
-        const months = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
-        seasonalData = months.map((month, index) => {
-            const baseLine = 15;
-            const seasonal = Math.sin((index / 12) * 2 * Math.PI) * 5;
-            const noise = (Math.random() - 0.5) * 3;
-            return Math.max(0, baseLine + seasonal + noise);
-        });
+        // Không có dữ liệu thực -> hiển thị lỗi thay vì fallback
+        console.warn('❌ No monthly data available for seasonal chart');
+        showChartError(canvas, 'No monthly data for seasonal analysis');
+        return;
     }
     
     const months = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
@@ -954,7 +1022,7 @@ function updatePredictionsDisplay(data) {
         if (magDetails) {
             const model = data.magnitude_prediction.model || 'ML Model';
             const note = data.magnitude_prediction.note || 'dựa trên dữ liệu được train';
-            magDetails.textContent = `Mô hình ${model} - ${note}`;
+            // magDetails.textContent = `Mô hình ${model} - ${note}`;
         }
         
         // Update risk level based on predicted magnitude
@@ -987,7 +1055,7 @@ function updatePredictionsDisplay(data) {
             methodElement.style.marginTop = '10px';
             depthCard.appendChild(methodElement);
         }
-        methodElement.textContent = data.depth_prediction.method || 'Tính từ tương quan magnitude-depth';
+        methodElement.textContent = data.depth_prediction.method || '';
     }
     
     // Update risk classification with ML results
@@ -1045,7 +1113,8 @@ function updateRiskClassificationFromDB(riskData) {
     
     const model = riskData.model || 'Rule-based';
     const confidence = riskData.confidence || 0;
-    modelInfo.textContent = `${model} (${confidence}% tin cậy)`;
+    //modelInfo.textContent = `${model} (${confidence}% tin cậy)`;
+    modelInfo.textContent = `(${confidence}% tin cậy)`;
 }
 
 function updateRiskFactorsFromAnalysis(factors) {
@@ -1055,13 +1124,21 @@ function updateRiskFactorsFromAnalysis(factors) {
     if (geologicalActivity && factors.geological_activity) {
         geologicalActivity.textContent = factors.geological_activity;
         
-        // Color code based on activity trend
-        if (factors.activity_trend > 20) {
-            geologicalActivity.style.color = '#ff4444'; // Red for high increase
-        } else if (factors.activity_trend < -20) {
-            geologicalActivity.style.color = '#00ff88'; // Green for decrease
+       // Parse phần trăm từ chuỗi text
+        const match = factors.geological_activity.match(/\(([-+]?\d+)%\)/);
+        const trendPercent = match ? parseInt(match[1]) : 0;
+        
+        // Phân loại màu sắc dựa trên mức độ thay đổi
+        if (trendPercent > 20) {
+            geologicalActivity.style.color = '#ff4444'; // Đỏ - tăng mạnh
+        } else if (trendPercent > 5) {
+            geologicalActivity.style.color = '#ff8800'; // Cam - tăng nhẹ
+        } else if (trendPercent < -20) {
+            geologicalActivity.style.color = '#00ff88'; // Xanh - giảm mạnh
+        } else if (trendPercent < -5) {
+            geologicalActivity.style.color = '#88ff88'; // Xanh nhạt - giảm nhẹ
         } else {
-            geologicalActivity.style.color = '#ffaa00'; // Orange for stable
+            geologicalActivity.style.color = '#ffaa00'; // Vàng - ổn định
         }
     }
     
@@ -1224,22 +1301,11 @@ function setupEventListeners() {
             timeBtns.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             currentPeriod = this.dataset.period;
+            
             console.log('=== PERIOD CHANGED ===');
             console.log('Selected period:', currentPeriod);
-            console.log('Available data before update:', Object.keys(earthquakeData).map(key => `${key}: ${earthquakeData[key] ? earthquakeData[key].length : 0}`));
             
-            // Force ensure we have enough data for this period
-            const keyMapping = { day: 'daily', week: 'weekly', month: 'monthly' };
-            const minRequiredData = { day: 7, week: 4, month: 3 };
-            const currentKey = keyMapping[currentPeriod];
-            const currentData = earthquakeData[currentKey];
-            
-            if (!currentData || currentData.length < minRequiredData[currentPeriod]) {
-                console.log(`Insufficient data for ${currentPeriod}, generating fallback immediately`);
-                const fallbackCounts = { day: 30, week: 12, month: 12 };
-                earthquakeData[currentKey] = generateSampleData(fallbackCounts[currentPeriod], currentPeriod);
-            }
-            
+            // Chỉ update charts với dữ liệu có sẵn, không tạo fallback
             updateTimeSeriesCharts();
         });
     });
@@ -1252,51 +1318,64 @@ function setupEventListeners() {
             parent.querySelectorAll('.chart-option').forEach(opt => opt.classList.remove('active'));
             this.classList.add('active');
             currentResample = this.dataset.resample;
+            
+            // Update trend chart without fallback
             updateTrendChart();
         });
     });
+    
+    // Setup preset handlers
+    setupPresetHandlers();
+    
+    // Reset filter button (optional)
+    const resetBtn = document.getElementById('resetFilter');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', resetDateFilter);
+    }
 }
 
 // Update time series charts when period changes
 function updateTimeSeriesCharts() {
-    // Sửa mapping key
     const keyMapping = { day: 'daily', week: 'weekly', month: 'monthly' };
-    let lineData = earthquakeData[keyMapping[currentPeriod]];
+    const lineData = earthquakeData[keyMapping[currentPeriod]] || [];
     
-    console.log(`Updating charts - Period: ${currentPeriod}, Key: ${keyMapping[currentPeriod]}`);
-    console.log('Line data length:', lineData ? lineData.length : 'undefined');
-    console.log('Sample line data:', lineData ? lineData.slice(0, 3) : 'No data');
+    console.log(`Updating charts - Period: ${currentPeriod}, Data length: ${lineData.length}`);
     
-    // If insufficient data, generate fallback for this specific period
-    const minRequiredData = { day: 7, week: 4, month: 3 };
-    if (!lineData || lineData.length < minRequiredData[currentPeriod]) {
-        console.warn(`Insufficient data for period ${currentPeriod} (${lineData ? lineData.length : 0} items, need ${minRequiredData[currentPeriod]}), generating fallback...`);
-        const fallbackCounts = { day: 30, week: 12, month: 12 };
-        earthquakeData[keyMapping[currentPeriod]] = generateSampleData(fallbackCounts[currentPeriod], currentPeriod);
-        lineData = earthquakeData[keyMapping[currentPeriod]];
-        console.log(`Generated fallback data: ${lineData.length} items`);
+    // Nếu không có dữ liệu, hiển thị error cho từng chart
+    if (lineData.length === 0) {
+        console.warn(`❌ No ${currentPeriod} data available`);
+        
+        // Show error on all charts
+        const canvases = ['lineChart', 'scatterChart', 'histogramChart'];
+        canvases.forEach(canvasId => {
+            const canvas = document.getElementById(canvasId);
+            if (canvas) {
+                showChartError(canvas, `No ${currentPeriod}ly data available`);
+            }
+        });
+        return;
     }
     
     // Update Line Chart
-    if (lineChart && lineData && lineData.length > 0) {
+    if (lineChart) {
         lineChart.data.labels = lineData.map(d => d.date.toLocaleDateString('vi-VN'));
         lineChart.data.datasets[0].data = lineData.map(d => d.count);
         lineChart.update();
-        console.log(`Line chart updated with ${lineData.length} data points`);
+        console.log(`✅ Line chart updated with ${lineData.length} real data points`);
     }
     
     // Update Scatter Chart  
-    if (scatterChart && lineData && lineData.length > 0) {
+    if (scatterChart) {
         scatterChart.data.datasets[0].data = lineData.map(d => ({
             x: d.magnitude,
             y: d.depth
         }));
         scatterChart.update();
-        console.log(`Scatter chart updated with ${lineData.length} data points`);
+        console.log(`✅ Scatter chart updated with ${lineData.length} real data points`);
     }
     
     // Update Histogram
-    if (histogramChart && lineData && lineData.length > 0) {
+    if (histogramChart) {
         const bins = [0, 2, 3, 4, 5, 6, 7, 8];
         const binCounts = new Array(bins.length - 1).fill(0);
         
@@ -1311,21 +1390,32 @@ function updateTimeSeriesCharts() {
         
         histogramChart.data.datasets[0].data = binCounts;
         histogramChart.update();
-        console.log(`Histogram updated with bins:`, binCounts);
+        console.log(`✅ Histogram updated with real data distribution:`, binCounts);
     }
 }
 
 // Update trend chart when resample period changes
 function updateTrendChart() {
-    const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'];
+     const data = earthquakeData[currentResample === 'week' ? 'weekly' : 'monthly'] || [];
     
-    if (trendChart && data) {
+    if (data.length === 0) {
+        console.warn('❌ No data for trend chart update');
+        const canvas = document.getElementById('trendChart');
+        if (canvas) {
+            showChartError(canvas, `No ${currentResample}ly data available`);
+        }
+        return;
+    }
+    
+    if (trendChart) {
         const movingAvg = calculateMovingAverage(data.map(d => d.magnitude), 3);
         
-        trendChart.data.labels = data.map(d => d.date.toLocaleDateString());
+        trendChart.data.labels = data.map(d => d.date.toLocaleDateString('vi-VN'));
         trendChart.data.datasets[0].data = data.map(d => d.magnitude);
         trendChart.data.datasets[1].data = movingAvg;
         trendChart.update();
+        
+        console.log(`✅ Trend chart updated with ${data.length} real data points`);
     }
 }
 
@@ -1434,21 +1524,294 @@ document.querySelectorAll('.bar-chart').forEach(chart => {
     observer.observe(chart);
 });
 
-// Add slide up animation
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideUp {
-        from {
-            transform: scaleY(0);
-            transform-origin: bottom;
+
+// Load analysis data with custom date range
+async function loadAnalysisData(startDate = null, endDate = null) {
+    try {
+        let url = `${API_BASE_URL}/api/analysis`;
+        if (startDate && endDate) {
+            url += `?start_date=${startDate}&end_date=${endDate}`;
         }
-        to {
-            transform: scaleY(1);
-            transform-origin: bottom;
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
+        
+        const analysisData = await response.json();
+        
+        // Update risk factors display
+        updateRiskFactorsFromAnalysis({
+            geological_activity: analysisData.geological_activity,
+            tectonic_pressure: analysisData.tectonic_pressure,
+            activity_trend: analysisData.activity_trend === 'increasing' ? 20 : 
+                          analysisData.activity_trend === 'decreasing' ? -20 : 0,
+            recent_activity: analysisData.recent_activity
+        });
+        
+        console.log('✅ Analysis data loaded:', analysisData);
+        return analysisData;
+        
+    } catch (error) {
+        console.error('❌ Analysis API Error:', error);
+        return null;
     }
-`;
-document.head.appendChild(style);
+}
+// Hàm áp dụng date filter
+async function applyDateFilter() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    if (!startDate || !endDate) {
+        alert('Vui lòng chọn cả ngày bắt đầu và kết thúc');
+        return;
+    }
+    
+    if (new Date(startDate) > new Date(endDate)) {
+        alert('Ngày bắt đầu phải nhỏ hơn ngày kết thúc');
+        return;
+    }
+    
+    // Cập nhật global state
+    customDateRange = {
+        startDate: startDate,
+        endDate: endDate,
+        isActive: true
+    };
+    
+    // Show loading
+    showLoadingOnCharts();
+    
+    try {
+        // Load lại data với custom range
+        await loadTimeSeriesWithDateRange(startDate, endDate);
+
+        await loadAnalysisData(startDate, endDate);
+        
+        // Update all charts
+        initializeCharts();
+        
+        // Update info display
+        updateDataInfo(`${startDate} đến ${endDate}`);
+        
+        console.log(`✅ Applied date filter: ${startDate} to ${endDate}`);
+        
+    } catch (error) {
+        console.error('❌ Error applying date filter:', error);
+        alert('Lỗi khi lọc dữ liệu. Vui lòng thử lại.');
+    }
+}
+
+// Load data với custom date range
+async function loadTimeSeriesWithDateRange(startDate, endDate) {
+    try {
+        const periods = ['day', 'week', 'month'];
+        
+        for (const period of periods) {
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/time-series?period=${period}&custom_start=${startDate}&custom_end=${endDate}`
+                );
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const keyName = period === 'day' ? 'daily' : 
+                              period === 'week' ? 'weekly' : 'monthly';
+                
+                earthquakeData[keyName] = data.map(item => ({
+                    date: new Date(item.date),
+                    count: item.count || 0,
+                    magnitude: item.avg_magnitude || 0,
+                    max_magnitude: item.max_magnitude || 0,
+                    depth: item.avg_depth || 0
+                }));
+                
+                console.log(`✅ Loaded custom ${period} data:`, data.length, 'items');
+                
+            } catch (error) {
+                console.error(`❌ Error loading custom ${period} data:`, error);
+                earthquakeData[keyName] = [];
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Custom date range API error:', error);
+        throw error;
+    }
+}
+
+// Quick preset handlers
+function setupPresetHandlers() {
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const days = parseInt(this.dataset.preset);
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(endDate.getDate() - days);
+            
+            // Update inputs
+            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+            
+            // Auto apply
+            applyDateFilter();
+        });
+    });
+}
+
+// Show loading on charts
+function showLoadingOnCharts() {
+    const canvases = ['lineChart', 'scatterChart', 'histogramChart', 'trendChart', 'seasonalChart'];
+    
+    canvases.forEach(canvasId => {
+        const canvas = document.getElementById(canvasId);
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#ff8800';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('⏳ Đang tải dữ liệu...', canvas.width / 2, canvas.height / 2);
+        }
+    });
+}
+
+// Update data info
+function updateDataInfo(dateRange) {
+    const infoElements = document.querySelectorAll('.data-info');
+    infoElements.forEach(element => {
+        element.textContent = `Hiển thị: ${dateRange}`;
+    });
+}
+
+// Reset to default data
+function resetDateFilter() {
+    customDateRange.isActive = false;
+    
+    // Reset inputs
+    document.getElementById('startDate').value = '2025-01-01';
+    document.getElementById('endDate').value = '2025-12-01';
+    
+    // Reload original data
+    loadTimeSeriesData().then(() => {
+        initializeCharts();
+        updateDataInfo('Toàn bộ dữ liệu');
+    });
+}
+
+
+// Trigger clustering manually
+async function triggerClustering() {
+    try {
+        console.log('🔄 Triggering clustering...');
+        const response = await fetch(`${API_BASE_URL}/api/clustering`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('✅ Clustering completed:', result);
+        
+        // Reload hotspots after clustering
+        await loadPredictions();
+        
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Clustering Error:', error);
+        return null;
+    }
+}
+
+// Trigger prediction manually
+async function triggerPrediction() {
+    try {
+        console.log('🔄 Triggering prediction...');
+        const response = await fetch(`${API_BASE_URL}/api/prediction/run`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('✅ Prediction completed:', result);
+        
+        // Reload predictions after completion
+        await loadPredictions();
+        
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Prediction Error:', error);
+        return null;
+    }
+}
+
+// Check system status
+async function checkSystemStatus() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/prediction/status`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const status = await response.json();
+        console.log('📊 System Status:', status);
+        
+        return status;
+        
+    } catch (error) {
+        console.error('❌ Status Check Error:', error);
+        return null;
+    }
+}
+
+// Add manual trigger buttons (optional)
+function addSystemControlButtons() {
+    const controlsContainer = document.createElement('div');
+    controlsContainer.className = 'system-controls';
+    controlsContainer.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        display: flex;
+        gap: 10px;
+        z-index: 1000;
+    `;
+    
+    const clusterBtn = document.createElement('button');
+    clusterBtn.textContent = '🔄 Clustering';
+    clusterBtn.onclick = triggerClustering;
+    
+    const predictionBtn = document.createElement('button');
+    predictionBtn.textContent = '🤖 Prediction';
+    predictionBtn.onclick = triggerPrediction;
+    
+    const statusBtn = document.createElement('button');
+    statusBtn.textContent = '📊 Status';
+    statusBtn.onclick = async () => {
+        const status = await checkSystemStatus();
+        if (status) {
+            alert(`System Status:\n${JSON.stringify(status, null, 2)}`);
+        }
+    };
+    
+    controlsContainer.appendChild(clusterBtn);
+    controlsContainer.appendChild(predictionBtn);
+    controlsContainer.appendChild(statusBtn);
+    
+    document.body.appendChild(controlsContainer);
+}
+
 
 // Metrics animation on scroll
 const metricsObserver = new IntersectionObserver((entries) => {

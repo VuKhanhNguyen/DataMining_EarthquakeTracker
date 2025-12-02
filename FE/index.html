@@ -116,6 +116,30 @@
             <!-- Time Series Charts -->
             <div class="time-charts-section">
                 <h3 class="subsection-title">📈 Phân Tích Theo Thời Gian</h3>
+
+                <!-- Thêm Date Range Filter -->
+    <div class="time-controls">
+       
+        
+        <!-- Date Range Picker mới -->
+        <div class="date-range-filter">
+            <label for="startDate">Từ:</label>
+            <input type="date" id="startDate" class="date-input" value="2025-01-01">
+            
+            <label for="endDate">Đến:</label>
+            <input type="date" id="endDate" class="date-input" value="2025-12-01">
+            
+            <button class="apply-filter-btn" onclick="applyDateFilter()">Áp dụng</button>
+            
+            <!-- Quick presets -->
+            <div class="quick-presets">
+                <button class="preset-btn" data-preset="30">30 ngày</button>
+                <button class="preset-btn" data-preset="90">3 tháng</button>
+                <button class="preset-btn" data-preset="365">1 năm</button>
+            </div>
+        </div>
+    </div>
+
                 <div class="time-selector">
                     <button class="time-btn active" data-period="day">Ngày</button>
                     <button class="time-btn" data-period="week">Tuần</button>
@@ -242,7 +266,7 @@
                         <span class="confidence-text">Độ tin cậy: 85%</span>
                     </div>
                     <div class="prediction-details">
-                        Dựa trên mô hình ML phân tích 30 ngày gần đây
+                        
                     </div>
                 </div>
 
@@ -261,11 +285,11 @@
                         <div class="risk-factors">
                             <div class="factor">
                                 <span class="factor-label">Hoạt động địa chất:</span>
-                                <span class="factor-value">Tăng 23%</span>
+                                <span class="factor-value">?.?</span>
                             </div>
                             <div class="factor">
                                 <span class="factor-label">Áp suất kiến tạo:</span>
-                                <span class="factor-value">Cao</span>
+                                <span class="factor-value">?.?</span>
                             </div>
                         </div>
                     </div>
@@ -297,16 +321,16 @@
                     </div>
                     <div class="hotspot-list">
                         <div class="hotspot-item">
-                            <span class="hotspot-name">Ring of Fire - Thái Bình Dương</span>
-                            <span class="hotspot-prob">89%</span>
+                            <span class="hotspot-name">?.?</span>
+                            <span class="hotspot-prob">?.?</span>
                         </div>
                         <div class="hotspot-item">
-                            <span class="hotspot-name">San Andreas Fault</span>
-                            <span class="hotspot-prob">76%</span>
+                            <span class="hotspot-name">?.?</span>
+                            <span class="hotspot-prob">?.?</span>
                         </div>
                         <div class="hotspot-item">
-                            <span class="hotspot-name">Himalayan Belt</span>
-                            <span class="hotspot-prob">65%</span>
+                            <span class="hotspot-name">?.?</span>
+                            <span class="hotspot-prob">?.?</span>
                         </div>
                     </div>
                 </div>

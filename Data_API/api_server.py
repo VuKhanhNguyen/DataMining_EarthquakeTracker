@@ -127,6 +127,233 @@ def get_stats_summary(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating stats: {str(e)}")
 
+@app.get("/api/analysis")
+def get_analysis_data(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    API lấy kết quả phân tích cho khoảng thời gian tùy chỉnh
+    """
+    try:
+        # Import service analysis function (load dynamically to avoid static unresolved import)
+        import sys
+        import os
+        import importlib.util
+
+        be_services_path = os.path.join(os.path.dirname(__file__), '..', 'BE Services')
+        service_file = os.path.join(be_services_path, 'service_analysis.py')
+        run_analysis = None
+
+        if os.path.isfile(service_file):
+            spec = importlib.util.spec_from_file_location("service_analysis", service_file)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["service_analysis"] = module
+            spec.loader.exec_module(module)
+            run_analysis = getattr(module, "run_analysis", None)
+        else:
+            # Fallback: try normal import if package is installed or on PYTHONPATH
+            try:
+                import service_analysis as sa  # type: ignore
+                run_analysis = getattr(sa, "run_analysis", None)
+            except Exception:
+                run_analysis = None
+
+        if run_analysis is None:
+            raise HTTPException(status_code=500, detail="Could not load run_analysis from service_analysis.py")
+        
+        # Chạy analysis với custom range
+        if start_date and end_date:
+            result = run_analysis(start_date, end_date)
+        else:
+            result = run_analysis()  # Default 24h
+        
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
+
+@app.get("/api/clustering")
+def trigger_clustering(db: Session = Depends(get_db)):
+    """
+    API trigger clustering và trả về kết quả
+    """
+    try:
+        # Import clustering service dynamically
+        import importlib.util
+        import os
+        
+        be_services_path = os.path.join(os.path.dirname(__file__), '..', 'BE Services')
+        clustering_file = os.path.join(be_services_path, 'service_clustering.py')
+        
+        if os.path.isfile(clustering_file):
+            spec = importlib.util.spec_from_file_location("service_clustering", clustering_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            run_clustering = getattr(module, "run_clustering", None)
+            
+            if run_clustering:
+                # Chạy clustering
+                run_clustering()
+                
+                # Lấy kết quả cluster info
+                clusters = db.query(ClusterInfo).order_by(ClusterInfo.updated_at.desc()).all()
+                
+                cluster_data = []
+                for cluster in clusters:
+                    cluster_data.append({
+                        "cluster_id": cluster.cluster_id,
+                        "name": cluster.cluster_name,
+                        "centroid_lat": float(cluster.centroid_lat),
+                        "centroid_lon": float(cluster.centroid_lon),
+                        "risk_level": cluster.risk_level,
+                        "updated_at": cluster.updated_at.isoformat()
+                    })
+                
+                return {
+                    "status": "success",
+                    "clusters": cluster_data,
+                    "message": f"Clustering completed with {len(cluster_data)} clusters"
+                }
+            else:
+                raise HTTPException(status_code=500, detail="run_clustering function not found")
+        else:
+            raise HTTPException(status_code=500, detail="service_clustering.py not found")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Phân cụm lỗi: {str(e)}")
+
+@app.get("/api/clustering/info")
+def get_clustering_info(db: Session = Depends(get_db)):
+    """
+    API lấy thông tin clustering hiện tại (không chạy lại)
+    """
+    try:
+        clusters = db.query(ClusterInfo).order_by(ClusterInfo.updated_at.desc()).all()
+        
+        cluster_data = []
+        for cluster in clusters:
+            # Đếm số earthquake trong cluster
+            earthquake_count = db.query(Earthquake).filter(
+                Earthquake.cluster_label == cluster.cluster_id
+            ).count()
+            
+            cluster_data.append({
+                "cluster_id": cluster.cluster_id,
+                "name": cluster.cluster_name,
+                "centroid_lat": float(cluster.centroid_lat),
+                "centroid_lon": float(cluster.centroid_lon),
+                "risk_level": cluster.risk_level,
+                "earthquake_count": earthquake_count,
+                "updated_at": cluster.updated_at.isoformat() if cluster.updated_at else None
+            })
+        
+        return {
+            "clusters": cluster_data,
+            "total_clusters": len(cluster_data)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching clustering info: {str(e)}")
+
+@app.post("/api/prediction/run")
+def trigger_prediction(db: Session = Depends(get_db)):
+    """
+    API trigger prediction service và trả về kết quả
+    """
+    try:
+        # Import prediction service dynamically
+        import importlib.util
+        import os
+        
+        be_services_path = os.path.join(os.path.dirname(__file__), '..', 'BE Services')
+        prediction_file = os.path.join(be_services_path, 'service_prediction.py')
+        
+        if os.path.isfile(prediction_file):
+            spec = importlib.util.spec_from_file_location("service_prediction", prediction_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            run_prediction = getattr(module, "run_prediction", None)
+            
+            if run_prediction:
+                # Chạy prediction
+                run_prediction()
+                
+                # Lấy predictions mới nhất
+                latest_predictions = db.query(Prediction).order_by(
+                    desc(Prediction.created_at)
+                ).limit(5).all()
+                
+                predictions_data = []
+                for pred in latest_predictions:
+                    predictions_data.append({
+                        "id": pred.id,
+                        "type": pred.prediction_type,
+                        "value": pred.predicted_value,
+                        "label": pred.predicted_label,
+                        "confidence": pred.confidence_score,
+                        "target_date": pred.target_date.isoformat() if pred.target_date else None,
+                        "model": pred.model_name,
+                        "created_at": pred.created_at.isoformat()
+                    })
+                
+                return {
+                    "status": "success",
+                    "predictions": predictions_data,
+                    "message": f"Prediction completed with {len(predictions_data)} new predictions"
+                }
+            else:
+                raise HTTPException(status_code=500, detail="run_prediction function not found")
+        else:
+            raise HTTPException(status_code=500, detail="service_prediction.py not found")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+@app.get("/api/prediction/status")
+def get_prediction_status(db: Session = Depends(get_db)):
+    """
+    API kiểm tra trạng thái prediction service
+    """
+    try:
+        # Kiểm tra prediction mới nhất
+        latest_prediction = db.query(Prediction).order_by(
+            desc(Prediction.created_at)
+        ).first()
+        
+        # Kiểm tra analysis stats
+        latest_analysis = db.query(AnalysisStat).order_by(
+            desc(AnalysisStat.timestamp)
+        ).first()
+        
+        # Kiểm tra clustering info  
+        cluster_count = db.query(ClusterInfo).count()
+        
+        status = {
+            "prediction_available": latest_prediction is not None,
+            "last_prediction": latest_prediction.created_at.isoformat() if latest_prediction else None,
+            "analysis_available": latest_analysis is not None, 
+            "last_analysis": latest_analysis.timestamp.isoformat() if latest_analysis else None,
+            "clusters_available": cluster_count > 0,
+            "cluster_count": cluster_count,
+            "system_ready": all([
+                latest_prediction is not None,
+                latest_analysis is not None,
+                cluster_count > 0
+            ])
+        }
+        
+        return status
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking prediction status: {str(e)}")
+
+
+
 
 # --- API Lấy dữ liệu động đất (Core) ---
 @app.get("/earthquakes", response_model=List[EarthquakeOut])
@@ -159,18 +386,26 @@ def get_earthquakes(
 def get_time_series(
     period: str = Query("day", regex="^(day|week|month)$"),
     days_back: int = Query(30, ge=1, le=365),
+    custom_start: Optional[str] = Query(None, description="Custom start date (YYYY-MM-DD)"),
+    custom_end: Optional[str] = Query(None, description="Custom end date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
-    API trả về dữ liệu time series cho các biểu đồ theo thời gian
-    period: 'day', 'week', 'month'
-    days_back: số ngày lấy dữ liệu từ hiện tại về trước
+    API trả về dữ liệu time series với hỗ trợ custom date range
     """
     try:
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=days_back)
+        if custom_start and custom_end:
+            # Sử dụng custom range
+            start_date = datetime.strptime(custom_start, "%Y-%m-%d")
+            end_date = datetime.strptime(custom_end, "%Y-%m-%d")
+            print(f"API: Sử dụng custom range {custom_start} đến {custom_end}")
+        else:
+            # Sử dụng days_back như cũ
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days_back)
+            print(f"API: Sử dụng days_back={days_back}")
         
-        # Query dữ liệu trong khoảng thời gian
+        # Rest of function remains the same...
         query = db.query(Earthquake).filter(
             Earthquake.time >= start_date,
             Earthquake.time <= end_date,
@@ -225,21 +460,24 @@ def get_time_series(
             max_mag = max(data['magnitudes']) if data['magnitudes'] else 0
             avg_depth = sum(data['depths']) / len(data['depths']) if data['depths'] else 0
             
+            # Format ngày theo dd/mm/yyyy cho display
+            display_date = data['date_obj'].strftime('%d/%m/%Y')
             result.append({
                 'date': data['date_obj'].isoformat(),
-                'date_string': date_key,
+                'date_string': display_date,
                 'count': data['count'],
                 'avg_magnitude': round(avg_mag, 2),
                 'max_magnitude': round(max_mag, 2),
                 'avg_depth': round(avg_depth, 2)
             })
         
-        print(f"API time-series {period}: returning {len(result)} data points")  # Debug log
+        print(f"API chuỗi thời gian {period}: trả về {len(result)} điểm dữ liệu")  # Debug log
         return result
-        
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(ve)}")
     except Exception as e:
-        print(f"Error in time-series API: {str(e)}")  # Debug log
-        raise HTTPException(status_code=500, detail=f"Error generating time series: {str(e)}")
+        print(f"Lỗi trong chuỗi thời gian API: {str(e)}")  # Debug log
+        raise HTTPException(status_code=500, detail=f"Lỗi khi tạo chuỗi thời gian: {str(e)}")
 
 # --- API Correlation Matrix ---
 @app.get("/api/correlation")
@@ -485,7 +723,7 @@ def get_latest_prediction(db: Session = Depends(get_db)):
                 "value": round(predicted_depth, 1),
                 "confidence": 68,
                 "unit": "km",
-                "method": "Calculated from magnitude correlation"
+                "method": ""
             },
             "risk_classification": None,
             "risk_factors": risk_factors,
@@ -558,8 +796,8 @@ def get_latest_prediction(db: Session = Depends(get_db)):
         return response
         
     except Exception as e:
-        print(f"Error in predictions API: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error fetching predictions: {str(e)}")
+        print(f"Lỗi trong API dự đoán: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lấy dự đoán: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -280,6 +280,7 @@ def run_prediction():
         
         if len(df) < 50:
             print("-> Không đủ dữ liệu để huấn luyện mô hình.")
+            create_error_predictions(session, f"Không đủ dữ liệu huấn luyện: chỉ có {len(df)} bản ghi")
             return
 
         # Xử lý dữ liệu thiếu bằng phương pháp interpolation
@@ -295,6 +296,7 @@ def run_prediction():
         
         if len(df) < 50:
             print("-> Không đủ dữ liệu sau khi làm sạch.")
+            create_error_predictions(session, f"Dữ liệu sau khi làm sạch quá ít: còn lại {final_count} bản ghi")
             return
 
         # ==========================================
@@ -425,12 +427,321 @@ def run_prediction():
 
     except Exception as e:
         print(f"Error in prediction: {e}")
+        create_error_predictions(session, f"Model training error: {str(e)}")
         session.rollback()
     finally:
         session.close()
-
-if __name__ == "__main__":
-    print("Service Prediction (Full Option) Started...")
+def create_error_predictions(session, error_message):
+    """Tạo error predictions thay vì fallback data"""
+    try:
+        target_date = datetime.now().date() + timedelta(days=1)
+        
+        # Xóa predictions cũ
+        session.query(Prediction).filter(Prediction.target_date == target_date).delete()
+        
+        # Tạo error prediction cho magnitude
+        error_mag = Prediction(
+            prediction_type="REGRESSION",
+            predicted_value=None,
+            confidence_score=0.0,
+            target_date=target_date,
+            model_name=f"ERROR_NO_DATA: {error_message}"
+        )
+        
+        # Tạo error prediction cho depth
+        error_depth = Prediction(
+            prediction_type="REGRESSION", 
+            predicted_value=None,
+            confidence_score=0.0,
+            target_date=target_date,
+            model_name=f"ERROR_NO_DATA: {error_message}"
+        )
+        
+        # Tạo error prediction cho risk
+        error_risk = Prediction(
+            prediction_type="CLASSIFICATION",
+            predicted_label="ERROR - No Data Available",
+            confidence_score=0.0,
+            target_date=target_date,
+            model_name=f"ERROR_NO_DATA: {error_message}"
+        )
+        
+        session.add(error_mag)
+        session.add(error_depth)
+        session.add(error_risk)
+        session.commit()
+        
+        print(f"-> ERROR PREDICTIONS created: {error_message}")
+        
+    except Exception as e:
+        print(f"Error creating error predictions: {e}")
+        session.rollback()
+        
+def run_prediction_service():
+    """Chạy service prediction định kỳ"""
+    print("Dịch vụ Dự đoán Bắt đầu...")
     while True:
         run_prediction()
         time.sleep(SLEEP_TIME)
+
+def run_prediction_with_params(custom_start=None, custom_end=None, prediction_days=1, model_type="RandomForest"):
+    """
+    Chạy prediction với tham số tùy chỉnh
+    
+    Args:
+        custom_start (str): Ngày bắt đầu dữ liệu training (YYYY-MM-DD)
+        custom_end (str): Ngày kết thúc dữ liệu training (YYYY-MM-DD)
+        prediction_days (int): Số ngày dự đoán vào tương lai
+        model_type (str): Loại model ('RandomForest', 'Linear', 'SVM')
+    """
+    session = SessionLocal()
+    try:
+        print(f"[{datetime.now()}] Custom Prediction: {model_type} model, {prediction_days} days ahead")
+        
+        # Xác định khoảng thời gian training data
+        if custom_start and custom_end:
+            start_date = datetime.strptime(custom_start, '%Y-%m-%d')
+            end_date = datetime.strptime(custom_end, '%Y-%m-%d')
+            print(f"-> Khoảng thời gian dữ liệu: {custom_start} đến {custom_end}")
+            
+            query = session.query(
+                Earthquake.magnitude, 
+                Earthquake.depth, 
+                Earthquake.latitude, 
+                Earthquake.longitude,
+                Earthquake.cluster_label,
+                Earthquake.time,
+                Earthquake.place
+            ).filter(
+                Earthquake.time >= start_date,
+                Earthquake.time <= end_date
+            ).order_by(Earthquake.time.desc())
+        else:
+            print("-> Sử dụng mặc định: 2000 bản ghi mới nhất")
+            query = session.query(
+                Earthquake.magnitude, 
+                Earthquake.depth, 
+                Earthquake.latitude, 
+                Earthquake.longitude,
+                Earthquake.cluster_label,
+                Earthquake.time,
+                Earthquake.place
+            ).order_by(Earthquake.time.desc()).limit(2000)
+        
+        df = pd.read_sql(query.statement, session.bind)
+        
+        if len(df) < 50:
+            error_msg = f"Dữ liệu huấn luyện không đủ: {len(df)} bản ghi"
+            print(f"-> {error_msg}")
+            return {"error": error_msg}
+
+        # Xử lý dữ liệu thiếu
+        print("-> Đang xử lý dữ liệu thiếu...")
+        original_count = len(df)
+        df = handle_missing_data(df, session)
+        df = interpolate_missing_values(df)
+        final_count = len(df)
+        print(f"-> Dữ liệu đã xử lý: {original_count} -> {final_count} bản ghi")
+        
+        if len(df) < 50:
+            error_msg = f"Dữ liệu không đủ sau khi làm sạch: {final_count} bản ghi"
+            return {"error": error_msg}
+
+        # Lấy activity level (có thể từ analysis hoặc tính từ data hiện tại)
+        latest_stat = session.query(AnalysisStat).order_by(AnalysisStat.timestamp.desc()).first()
+        current_activity_level = latest_stat.total_events_24h if latest_stat else len(df)
+        
+        df['activity_level'] = current_activity_level
+
+        # Chọn model dựa trên tham số
+        if model_type == "RandomForest":
+            from sklearn.ensemble import RandomForestRegressor
+            mag_model = RandomForestRegressor(n_estimators=100, random_state=42)
+            depth_model = RandomForestRegressor(n_estimators=100, random_state=42)
+        elif model_type == "Linear":
+            from sklearn.linear_model import LinearRegression
+            mag_model = LinearRegression()
+            depth_model = LinearRegression()
+        elif model_type == "SVM":
+            from sklearn.svm import SVR
+            mag_model = SVR(kernel='rbf', C=1.0, gamma='scale')
+            depth_model = SVR(kernel='rbf', C=1.0, gamma='scale')
+        else:
+            return {"error": f"Loại mô hình không xác định: {model_type}"}
+
+        # Training
+        mag_features = ['depth', 'latitude', 'longitude', 'cluster_label', 'activity_level']
+        depth_features = ['magnitude', 'latitude', 'longitude', 'cluster_label', 'activity_level']
+        
+        X_mag = df[mag_features]
+        y_mag = df['magnitude']
+        X_depth = df[depth_features]
+        y_depth = df['depth']
+        
+        mag_model.fit(X_mag, y_mag)
+        depth_model.fit(X_depth, y_depth)
+
+        # Prediction cho nhiều ngày
+        predictions_results = []
+        
+        for day_ahead in range(1, prediction_days + 1):
+            target_date = datetime.now().date() + timedelta(days=day_ahead)
+            
+            # Input cho prediction
+            next_input_mag = pd.DataFrame([{
+                'depth': df['depth'].mean(),
+                'latitude': df['latitude'].mean(),
+                'longitude': df['longitude'].mean(),
+                'cluster_label': df['cluster_label'].mode()[0] if not df['cluster_label'].mode().empty else -1,
+                'activity_level': current_activity_level 
+            }])
+            
+            pred_mag = mag_model.predict(next_input_mag)[0]
+            mag_confidence = min(0.95, 0.7 + (len(df) / 5000))
+            
+            # Depth prediction
+            next_input_depth = pd.DataFrame([{
+                'magnitude': pred_mag,
+                'latitude': df['latitude'].mean(),
+                'longitude': df['longitude'].mean(),
+                'cluster_label': df['cluster_label'].mode()[0] if not df['cluster_label'].mode().empty else -1,
+                'activity_level': current_activity_level
+            }])
+            
+            pred_depth = depth_model.predict(next_input_depth)[0]
+            depth_confidence = max(0.6, mag_confidence - 0.15)
+            
+            # Risk classification
+            risk_label = "Low"
+            risk_confidence = 0.75
+            
+            if pred_mag >= 7.0:
+                risk_label = "Critical Alert"
+                risk_confidence = 0.95
+            elif pred_mag >= 6.0:
+                risk_label = "High"
+                risk_confidence = 0.9
+            elif pred_mag >= 4.5:
+                risk_label = "Moderate"
+                risk_confidence = 0.85
+            
+            # Lưu vào database
+            pred_mag_reg = Prediction(
+                prediction_type="REGRESSION",
+                predicted_value=float(pred_mag),
+                confidence_score=mag_confidence,
+                target_date=target_date,
+                model_name=f"{model_type}_Magnitude_Custom"
+            )
+            
+            pred_depth_reg = Prediction(
+                prediction_type="REGRESSION",
+                predicted_value=float(pred_depth),
+                confidence_score=depth_confidence,
+                target_date=target_date,
+                model_name=f"{model_type}_Depth_Custom"
+            )
+            
+            pred_risk_class = Prediction(
+                prediction_type="CLASSIFICATION",
+                predicted_label=risk_label,
+                confidence_score=risk_confidence,
+                target_date=target_date,
+                model_name=f"Enhanced_{model_type}_Risk"
+            )
+            
+            session.add(pred_mag_reg)
+            session.add(pred_depth_reg)
+            session.add(pred_risk_class)
+            
+            predictions_results.append({
+                "date": target_date.isoformat(),
+                "magnitude": round(pred_mag, 2),
+                "depth": round(pred_depth, 1),
+                "risk": risk_label,
+                "confidence": {
+                    "magnitude": round(mag_confidence, 2),
+                    "depth": round(depth_confidence, 2),
+                    "risk": round(risk_confidence, 2)
+                }
+            })
+
+        session.commit()
+        
+        print(f"-> Dự đoán Tùy chỉnh Hoàn thành:")
+        print(f"   Mô hình: {model_type}")
+        print(f"   Dữ liệu huấn luyện: {final_count} bản ghi")
+        print(f"   Dự đoán: {prediction_days} ngày tới")
+        
+        return {
+            "status": "success",
+            "model_type": model_type,
+            "training_records": final_count,
+            "prediction_days": prediction_days,
+            "predictions": predictions_results,
+            "training_period": f"{custom_start} to {custom_end}" if custom_start and custom_end else "latest_data"
+        }
+
+    except Exception as e:
+        print(f"Lỗi trong dự đoán tùy chỉnh: {e}")
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+        
+        
+        
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        
+        if command == 'custom' and len(sys.argv) >= 4:
+            # Custom prediction với time range
+            start_date = sys.argv[2]
+            end_date = sys.argv[3]
+            prediction_days = int(sys.argv[4]) if len(sys.argv) >= 5 else 1
+            model_type = sys.argv[5] if len(sys.argv) >= 6 else "RandomForest"
+            
+            result = run_prediction_with_params(start_date, end_date, prediction_days, model_type)
+            print("Kết quả Dự đoán:", result)
+            
+        elif command == 'model' and len(sys.argv) >= 3:
+            # Test model khác nhau
+            model_type = sys.argv[2]
+            prediction_days = int(sys.argv[3]) if len(sys.argv) >= 4 else 1
+            
+            result = run_prediction_with_params(prediction_days=prediction_days, model_type=model_type)
+            print("Kết quả Dự đoán:", result)
+            
+        elif command == 'days' and len(sys.argv) >= 3:
+            # Predict nhiều ngày
+            prediction_days = int(sys.argv[2])
+            result = run_prediction_with_params(prediction_days=prediction_days)
+            print("Kết quả Dự đoán:", result)
+            
+        elif command == 'run':
+            # Chạy prediction một lần
+            run_prediction()
+            
+        elif command == 'service':
+            # Chạy service định kỳ
+            run_prediction_service()
+            
+        else:
+            print("Usage:")
+            print("  python service_prediction.py custom 2024-01-01 2024-12-01 [days] [model]")
+            print("  python service_prediction.py model RandomForest [days]")
+            print("  python service_prediction.py days 7")
+            print("  python service_prediction.py run")
+            print("  python service_prediction.py service")
+            print("")
+            print("Models: RandomForest, Linear, SVM")
+            print("Examples:")
+            print("  python service_prediction.py custom 2024-01-01 2024-12-01 3 SVM")
+            print("  python service_prediction.py model Linear 5")
+            print("  python service_prediction.py days 14")
+    else:
+        # Chạy service thường xuyên (mặc định)
+        run_prediction_service()
