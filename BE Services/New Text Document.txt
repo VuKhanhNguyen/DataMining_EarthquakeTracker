@@ -1,0 +1,5 @@
+python data_ingestion.py custom 2025-10-01 2025-11-30
+python api_server.api
+python service_analysis.py custom 2025-10-01 2025-11-30
+python service_clustering.py run
+python service_prediction.py custom 2025-05-01 2025-11-30 1 RandomForest
